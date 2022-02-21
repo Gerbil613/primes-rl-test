@@ -1,27 +1,28 @@
 import numpy as np
 from copy import deepcopy
 import random
+import matplotlib.pyplot as plt
 
-width, height = 5, 5
-start = (0, 0)
+width, height = 10, 10 # size of gridworld
+start = (0, 0) # starting square (row, column) is top left
 goal = (height - 1, width - 1)
 blocks = [(3,4),(2,1),(3,2)]
-values = np.zeros((width, height))
+values = np.zeros((width, height)) # value at each square
 num_episodes = 100
-alpha = 0.1
-epsilon = 0.1
+alpha = 0.35 # learning rate
+epsilon = 0.1 # using epsilon-greedy algorithm
 
 def main():
     values[goal[0]][goal[1]] = 1
     for episode in range(num_episodes):
         state = [start[0], start[1]]
-        trajectory = [state]
+        trajectory = [state] # keep track of trajectory
         total_reward = 0
-        while state[0] != goal[0] or state[1] != goal[1]:
+        while state[0] != goal[0] or state[1] != goal[1]: # keep on going as long as we don't reach goal
             if np.random.rand(1) >= epsilon:
                 best_action = [0, 1]
                 for action in [[1,0],[0,-1],[-1,0]]:
-                    try:
+                    try: # in case we try to go out of bounds
                         if get_value(state, action) > get_value(state, best_action):
                             best_action = action
                     except IndexError: continue
@@ -39,16 +40,23 @@ def main():
             values[state[0]][state[1]] += alpha * (values[later_state[0]][later_state[1]] - values[state[0]][state[1]])
 
     print(values)
+    plt.imshow(values)
+    plt.show()
 
 def take_action(state, action):
+    '''take_action(arr, arr) -> int, arr
+    inputs current state and action to take, and outputs new state and reward acquired in the process
+    this is transitions dynamis function'''
     new_state = (state[0] + action[0], state[1] + action[1])
-    if new_state[0] > 4 or new_state[0] < 0 or new_state[1] > 4 or new_state[1] < 0 or new_state in blocks:
+    if new_state[0] >= height or new_state[0] < 0 or new_state[1] >= width or new_state[1] < 0 or new_state in blocks:
         new_state = state
 
     reward = 1 if new_state[0] == goal[0] and new_state[1] == goal[1] else -1
     return reward, new_state
 
 def get_value(state, action):
+    '''get_value(arr, arr) -> int
+    gives the value of the next state, given the current state we are in and the action we're about to take'''
     return values[state[0] + action[0]][state[1] + action[1]]
 
 if __name__ == '__main__':
