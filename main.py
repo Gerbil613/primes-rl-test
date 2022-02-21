@@ -6,15 +6,19 @@ import matplotlib.pyplot as plt
 width, height = 10, 10 # size of gridworld
 start = (0, 0) # starting square (row, column) is top left
 goal = (height - 1, width - 1)
-blocks = [(3,4),(2,1),(3,2)]
-values = np.zeros((width, height)) # value at each square
+blocks = [(8,9),(2,1),(7,2),(6,3)]
+values = np.random.rand(width, height) # value at each square
+policy = [[random.choice([[1,0],[0,1],[-1,0],[0,-1]]) for c in range(width)] for r in range(height)] # initiate random policy (policies are deterministic)
 num_episodes = 100
-alpha = 0.35 # learning rate
+alpha = 0.4 # learning rate
 epsilon = 0.1 # using epsilon-greedy algorithm
 
 def main():
+    global epsilon
     values[goal[0]][goal[1]] = 1
     for episode in range(num_episodes):
+        print(episode)
+        epsilon *= 0.95
         state = [start[0], start[1]]
         trajectory = [state] # keep track of trajectory
         total_reward = 0
