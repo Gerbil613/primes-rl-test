@@ -6,40 +6,31 @@ import matplotlib.pyplot as plt
 width, height = 10, 10 # size of gridworld
 start = (0, 0) # starting square (row, column) is top left
 goal = (height - 1, width - 1)
-blocks = [(3,4),(2,1),(3,2)]
-values = np.zeros((width, height)) # value at each square
+blocks = [(8,9),(2,1),(7,2),(6,3)]
+values = np.zeros((height,width)) # value at each square
+actions = [[1,0],[0,1],[-1,0],[0,-1]]
+policy = [[random.choice(actions) for c in range(width)] for r in range(height)] # initiate random policy (policies are deterministic)
 num_episodes = 100
-alpha = 0.35 # learning rate
-epsilon = 0.1 # using epsilon-greedy algorithm
+gamma = 1
 
 def main():
     values[goal[0]][goal[1]] = 1
-    for episode in range(num_episodes):
-        state = [start[0], start[1]]
-        trajectory = [state] # keep track of trajectory
-        total_reward = 0
-        while state[0] != goal[0] or state[1] != goal[1]: # keep on going as long as we don't reach goal
-            if np.random.rand(1) >= epsilon:
-                best_action = [0, 1]
-                for action in [[1,0],[0,-1],[-1,0]]:
-                    try: # in case we try to go out of bounds
-                        if get_value(state, action) > get_value(state, best_action):
-                            best_action = action
-                    except IndexError: continue
+    for i in range(num_episodes): # policity iteration
+        for row in range(height): # evaluation
+            for column in range(width):
+                if is_blocked(row, column): continue
+                state = [row, column]
+                reward = 1 if state[0] == goal[0] and state[1] == goal[1] else -1
+                values[row][column] = reward + gamma * get_value(state, policy[row][column]) # evaluation
 
-            else:
-                best_action = random.choice([(0,1),(1,0),(-1,0),(0,-1)])
+                best_action = [-1,0] if row > 0 else [1,0]
+                for action in actions:
+                    if get_value(state, action) > get_value(state, best_action):
+                        best_action = deepcopy(action)
 
-            reward, state = take_action(state, best_action)
-            trajectory.append(deepcopy(state))
-            total_reward += reward
+                policy[row][column] = best_action
 
-        for i in range(len(trajectory) - 2, 0, -1): # value iteration
-            state = trajectory[i]
-            later_state = trajectory[i+1]
-            values[state[0]][state[1]] += alpha * (values[later_state[0]][later_state[1]] - values[state[0]][state[1]])
-
-    print(values)
+    print(policy)
     plt.imshow(values)
     plt.show()
 
@@ -57,7 +48,21 @@ def take_action(state, action):
 def get_value(state, action):
     '''get_value(arr, arr) -> int
     gives the value of the next state, given the current state we are in and the action we're about to take'''
-    return values[state[0] + action[0]][state[1] + action[1]]
+    new = [state[0] + action[0], state[1] + action[1]]
+    if is_blocked(*new):
+        return values[state[0]][state[1]]
+
+    if new[0] >= 0 and new[0] < height and new[1] >= 0 and new[1] < width:
+        return values[state[0] + action[0]][state[1] + action[1]]
+
+    return values[state[0]][state[1]]
+
+def is_blocked(row, column):
+    for block in blocks:
+        if row == block[0] and column == block[1]:
+            return True
+
+    return False
 
 if __name__ == '__main__':
     main()
