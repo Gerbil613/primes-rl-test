@@ -3,11 +3,11 @@ from copy import deepcopy
 import random
 import matplotlib.pyplot as plt
 
-width, height = 5, 3 # size of gridworld
+width, height = 10, 10 # size of gridworld
 start = (0, 0) # starting square (row, column) is top left
 goal = (height - 1, width - 1)
-num_blocks = 2
-blocks_coords = np.random.choice(range(width * height), size=num_blocks, replace=False)
+num_blocks = 5
+blocks_coords = np.random.choice(range(1, width * height - 1), size=num_blocks, replace=False) # assumes start and goal are top-left and bottom right, respectively
 blocks = [[[[r,c] for r in range(height)] for c in range(width)][j // height][j % height] for j in blocks_coords]
 values = np.zeros((height,width)) # value at each square
 actions = [[1,0],[0,1],[-1,0],[0,-1]]
@@ -33,7 +33,24 @@ def main():
 
                 policy[row][column] = best_action
 
-    print(policy)
+    for row in range(height):
+        for column in range(width):
+            if is_blocked(row, column):
+                print('-- ', end='')
+            else:
+                if policy[row][column] == [0,1]:
+                    print('-> ',end='')
+                
+                elif policy[row][column] == [0,-1]:
+                    print('<- ', end='')
+
+                elif policy[row][column] == [-1,0]:
+                    print('^^ ',end='')
+
+                elif policy[row][column] == [1,0]:
+                    print('⌄⌄ ',end='')
+        print('\n')
+
     plt.imshow(values)
     plt.show()
 
