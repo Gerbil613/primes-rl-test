@@ -3,17 +3,20 @@ from copy import deepcopy
 import random
 import matplotlib.pyplot as plt
 
-width, height = 10, 10 # size of gridworld
+width, height = 5, 3 # size of gridworld
 start = (0, 0) # starting square (row, column) is top left
 goal = (height - 1, width - 1)
-blocks = [(8,9),(2,1),(7,2),(6,3)]
+num_blocks = 2
+blocks_coords = np.random.choice(range(width * height), size=num_blocks, replace=False)
+blocks = [[[[r,c] for r in range(height)] for c in range(width)][j // height][j % height] for j in blocks_coords]
 values = np.zeros((height,width)) # value at each square
 actions = [[1,0],[0,1],[-1,0],[0,-1]]
-policy = [[random.choice(actions) for c in range(width)] for r in range(height)] # initiate random policy (policies are deterministic)
+policy = None # initialize
 num_episodes = 100
 gamma = 1
 
 def main():
+    policy = [[random.choice(actions) if not is_blocked(r,c) else None for c in range(width)] for r in range(height)] # initiate random policy (policies are deterministic)
     values[goal[0]][goal[1]] = 1
     for i in range(num_episodes): # policity iteration
         for row in range(height): # evaluation
