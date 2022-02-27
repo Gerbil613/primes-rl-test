@@ -12,13 +12,23 @@ blocks = [[[[r,c] for r in range(height)] for c in range(width)][j // height][j 
 values = np.zeros((height,width)) # value at each square
 actions = [[1,0],[0,1],[-1,0],[0,-1]]
 policy = None # initialize
+# epsilon greedy?
+# - robustness? what attacks work in either settings
+# - how should adversary structure their attack?
+# - not convoluted adversary, mess with just reward
+# mess with gamma
+# non-equal length paths (non-rectangular): what happens with gamma
+# - what does messing with gamma do?
+# examine the way rewards are rewarded (why always -1)
+# - random rewards?
+# there are so many optimal paths
 num_episodes = 100
 gamma = 1
 
 def main():
     policy = [[random.choice(actions) if not is_blocked(r,c) else None for c in range(width)] for r in range(height)] # initiate random policy (policies are deterministic)
     values[goal[0]][goal[1]] = 1
-    for i in range(num_episodes): # policity iteration
+    for i in range(num_episodes): # policy iteration
         for row in range(height): # evaluation
             for column in range(width):
                 if is_blocked(row, column): continue
