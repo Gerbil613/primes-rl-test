@@ -22,8 +22,9 @@ policy = None # initialize
 # examine the way rewards are rewarded (why always -1)
 # - random rewards?
 # there are so many optimal paths
-num_episodes = 100
+num_episodes = 1000
 gamma = 1
+epsilon = 0.1
 
 def main():
     policy = [[random.choice(actions) if not is_blocked(r,c) else None for c in range(width)] for r in range(height)] # initiate random policy (policies are deterministic)
@@ -34,7 +35,8 @@ def main():
                 if is_blocked(row, column): continue
                 state = [row, column]
                 reward = 1 if state[0] == goal[0] and state[1] == goal[1] else -1
-                values[row][column] = reward + gamma * get_value(state, policy[row][column]) # evaluation
+                new_action = policy[row][column] if np.random.rand() > epsilon else random.choice(actions)
+                values[row][column] = reward + gamma * get_value(state, new_action) # evaluation
 
                 best_action = [-1,0] if row > 0 else [1,0]
                 for action in actions:
