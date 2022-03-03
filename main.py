@@ -3,38 +3,52 @@ from copy import deepcopy
 import random
 import matplotlib.pyplot as plt
 
-width, height = 10, 10 # size of gridworld
-start = (0, 0) # starting square (row, column) is top left
-goal = (height - 1, width - 1)
-num_blocks = 5
-blocks_coords = np.random.choice(range(1, width * height - 1), size=num_blocks, replace=False) # assumes start and goal are top-left and bottom right, respectively
-blocks = [[[[r,c] for r in range(height)] for c in range(width)][j // height][j % height] for j in blocks_coords]
-values = np.zeros((height,width)) # value at each square
+blocks = []
+goals = []
+start = None
+bad_goals = []
+width, height = None, None
+with open('maze.txt', 'r') as maze_file:
+    row = 0
+    for line in maze_file.readlines():
+        line = line.strip('\n').split(' ')
+        column = 0
+        for item in line:
+            if item == '1':
+                blocks.append([row, column])
+            elif item == '*':
+                goals.append([row, column])
+            elif item == 'x':
+                bad_goals.append([row, column])
+            elif item == 's':
+                start = [row, column]
+            column += 1
+
+        width = column
+        row += 1
+
+    height = row
+
+values = np.random.random((height,width)) # value at each square
 actions = [[1,0],[0,1],[-1,0],[0,-1]]
 policy = None # initialize
-# epsilon greedy?
 # - robustness? what attacks work in either settings
 # - how should adversary structure their attack?
 # - not convoluted adversary, mess with just reward
-# mess with gamma
-# non-equal length paths (non-rectangular): what happens with gamma
-# - what does messing with gamma do?
 # examine the way rewards are rewarded (why always -1)
 # - random rewards?
-# there are so many optimal paths
-num_episodes = 1000
-gamma = 1
-epsilon = 0.1
+num_episodes = 100
+gamma = 0.99
+epsilon = 0
 
 def main():
     policy = [[random.choice(actions) if not is_blocked(r,c) else None for c in range(width)] for r in range(height)] # initiate random policy (policies are deterministic)
-    values[goal[0]][goal[1]] = 1
     for i in range(num_episodes): # policy iteration
         for row in range(height): # evaluation
             for column in range(width):
                 if is_blocked(row, column): continue
                 state = [row, column]
-                reward = 1 if state[0] == goal[0] and state[1] == goal[1] else -1
+                reward = 1 if state in goals else (-1 if state in bad_goals else 0)
                 new_action = policy[row][column] if np.random.rand() > epsilon else random.choice(actions)
                 values[row][column] = reward + gamma * get_value(state, new_action) # evaluation
 
