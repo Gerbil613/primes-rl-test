@@ -37,7 +37,8 @@ policy = None # initialize
 # - not convoluted adversary, mess with just reward
 # examine the way rewards are rewarded (why always -1)
 # - random rewards?
-num_episodes = 100
+# - compare to optimal paths
+num_episodes = 1000
 gamma = 0.99
 epsilon = 0
 
