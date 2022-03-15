@@ -3,31 +3,31 @@ from copy import deepcopy
 import random
 import matplotlib.pyplot as plt
 
-def cantor_pair(a, b):
+def cantor_pair(a, b): # used as a hash function for states (which are represented by two independent numbers)
     return int(1/2 * (a + b) * (a + b + 1) + b)
 
-blocks = []
-terminals = []
-start = None
-scores = {}
+blocks = [] # list of invalid states (walls)
+terminals = [] # list of terminal states
+start = None # state at which we start
+scores = {} # dict maps the hash of a state to the reward associated with it
 width, height = None, None
-visited = set()
+visited = set() # global var listing all the states we have visited in the current trajectory; useful for stopping us from going backwards
 with open('maze.txt', 'r') as maze_file:
     row = 0
     for line in maze_file.readlines():
         line = line.strip('\n').split(' ')
         column = 0
         for item in line:
-            if item == '|':
+            if item == '|': # wall
                 blocks.append(cantor_pair(row, column))
-            elif item == '*':
+            elif item == '*': # terminal state
                 terminals.append(cantor_pair(row, column))
                 scores[cantor_pair(row, column)] = 0 # no reward for start
-            elif item == 's':
+            elif item == 's': # start state
                 start = [row, column]
                 scores[cantor_pair(row, column)] = 0 # no reward for terminal state itself
 
-            else:
+            else: # regular state
                 scores[cantor_pair(row, column)] = int(item)
             
             column += 1
@@ -37,61 +37,75 @@ with open('maze.txt', 'r') as maze_file:
 
     height = row
 
-actions = [[1,0],[0,1],[-1,0],[0,-1]]
+actions = [[1,0],[0,1],[-1,0],[0,-1]] # action space (usually is subset of this b/c walls)
 
-# - robustness? what attacks work in either settings
-# - how should adversary structure their attack?
-# - not convoluted adversary, mess with just reward
-# - random rewards?
-# - compare to optimal paths
-
-# why isn't the RL consistently able to reach the optimal path?
-# is this an effective model for rl?
-
-values = []
-num_episodes = 1000
-gamma = 0.99
-epsilon = 0.1
-alpha = 0.1
+values = [] # will be initialized as np.array of shape (height, width), outputs value
+num_episodes = 10000 # number of training episodes
+gamma = 0.99 # discount factor
+epsilon = 0.1 # greed factor
+alpha = 0.5 # learning rate
 
 def learn():
+    '''learn() -> None
+    trains global variabel "values" to learn Q-values of maze'''
     global visited, values
 
-    values = np.random.random((height,width)) # value at each square
+    values = np.random.random((height, width)) # intialize
     for episode in range(num_episodes):
         state = start
         visited = set()
-        while not is_terminal(state):
-            visited.add(cantor_pair(*state))
-            reward, new_state = take_action(state, best_action(state, epsilon))
-            values[new_state[0]][new_state[1]] = (1-alpha) * values[new_state[0]][new_state[1]] + alpha * (reward + gamma * get_value(new_state, best_action(new_state, 0)))
-            state = new_state
+        while not is_terminal(state): # so long as we don't hit an end
+            visited.add(cantor_pair(*state)) # mark that we visited here
+            action = best_action(state, epsilon) # get best action according to current policy
+            reward, new_state = take_action(state, action) # take action and observe reward, new state
+            skippers = [] # this is a list of consecutive states in whom we only have one valid action
+            # keep on moving forward until we hit an actual junction in the maze
+            while len(get_action_space(new_state)) == 1:
+                skippers.append(new_state)
+                visited.add(cantor_pair(*new_state))
+                add_reward, new_state = take_action(new_state, get_action_space(new_state)[0])
+                # we will pretend that all reward accumulated in this deterministic trajectory came from entering the last state; this avoids diluting/discriminating against rewards on longer paths
+                reward += add_reward 
 
-        print(episode)
+            values[new_state] = (1-alpha) * values[new_state] + alpha * (reward + gamma * get_value(new_state, best_action(new_state, 0))) # fundamental bellman equation update
+            new_value = values[new_state] # go back through all the deterministic states we sped through and give them Q-values
+            for i in range(len(skippers) - 1, -1, -1):
+                values[skippers[i]] = new_value
+                new_value -= scores[cantor_pair(*skippers[i])] # the Q-value of a deterministic state is the Q-value of the following state minus its reward
+
+            state = new_state # update state
 
 def evaluate():
+    '''evaluate() -> None
+    evaluates the global var "values" according to a deterministic (non-epsilon) greedy policy'''
     global visited
     performance = 0
     state = start
     visited = set()
+    # simply loop and keep on using policy to progress through maze
     while not is_terminal(state):
         visited.add(cantor_pair(*state))
         reward, new_state = take_action(state, best_action(state, 0))
         performance += reward
         state = new_state
 
+    print('Ended evaluation at: ' + str(state))
     return performance
 
 def main():
     learn()
-    print(evaluate())
-    plt.imshow(values)
+    plt.imshow(values) # visualize the value function
     plt.show()
+    print('Evaluated score: ' + str(evaluate()))
 
 def is_blocked(state):
+    '''is_blocked(tuple) -> bool
+    outputs whether the state is a wall'''
     return cantor_pair(*state) in blocks
 
 def is_terminal(state):
+    '''is_terminal(tuple) -> bool
+    outputs whether the state is a terminal state'''
     return cantor_pair(*state) in terminals
 
 def take_action(state, action):
@@ -104,19 +118,18 @@ def take_action(state, action):
     return [reward, new_state]
 
 def get_reward(new_state):
+    '''get_reward(tuple) -> int
+    computes and returns reward for entering new_state'''
     return scores[cantor_pair(*new_state)]
 
 def get_value(state, action):
-    '''get_value(arr, arr) -> int
+    '''get_value(tuple, tuple) -> int
     gives the value of the next state, given the current state we are in and the action we're about to take'''
-    global values
-    new = [state[0] + action[0], state[1] + action[1]]
-    if new in blocks:
-        raise ValueError('blocks are not valid states')
-
-    return values[new[0]][new[1]]
+    return values[state[0]+action[0]][state[1]+action[1]]
 
 def get_action_space(state):
+    ''''get_action_space(tuple) -> arr
+    outputs list of all possible actions that may be taken in state'''
     output = []
     global visited
     for action in actions:
@@ -127,6 +140,8 @@ def get_action_space(state):
     return output
 
 def best_action(state, epsilon):
+    '''best_action(tuple, float) -> tuple
+    outputs the best action in the current state according to current value function, but takes random action with probability epsilon'''
     poss_actions = get_action_space(state)
     if random.random() < epsilon: return random.choice(poss_actions)
     if len(poss_actions) == 0:
