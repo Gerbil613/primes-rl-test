@@ -43,14 +43,27 @@ values = [] # will be initialized as np.array of shape (height, width), outputs 
 num_episodes = 10000 # number of training episodes
 gamma = 0.99 # discount factor
 epsilon = 0.1 # greed factor
-alpha = 0.5 # learning rate
+alpha = 0.4 # learning rate
+
+# why does QVal(15,13) blow up linearly?
+# optimal path is not simply one of 12 -- it is nested deep inside, requiring several previous decisions to have been made.
+#   therefore, we only reach optimal path 1.56% of the time
+
+# decrease epsilon
+# adversarial models (reward based)
+# develop meaningful abstraction despite limited branches
+# - specific attack for game? how much knowledge of MDP?
+# nondeterministic rewards?
+# - adversary is shifting the gaussian of rewards
 
 def learn():
     '''learn() -> None
-    trains global variabel "values" to learn Q-values of maze'''
-    global visited, values
+    trains global variable "values" to learn Q-values of maze'''
+    global visited, values, gamma
 
-    values = np.random.random((height, width)) # intialize
+    values = np.zeros((height, width)) # intialize
+    data = []
+    count = 0
     for episode in range(num_episodes):
         state = start
         visited = set()
@@ -58,22 +71,18 @@ def learn():
             visited.add(cantor_pair(*state)) # mark that we visited here
             action = best_action(state, epsilon) # get best action according to current policy
             reward, new_state = take_action(state, action) # take action and observe reward, new state
-            skippers = [] # this is a list of consecutive states in whom we only have one valid action
-            # keep on moving forward until we hit an actual junction in the maze
-            while len(get_action_space(new_state)) == 1:
-                skippers.append(new_state)
-                visited.add(cantor_pair(*new_state))
-                add_reward, new_state = take_action(new_state, get_action_space(new_state)[0])
-                # we will pretend that all reward accumulated in this deterministic trajectory came from entering the last state; this avoids diluting/discriminating against rewards on longer paths
-                reward += add_reward 
+            if get_value(new_state, best_action(new_state, 0)) > 0 and state[0] == 15 and state[1] == 11:
+                print(new_state, best_action(new_state, 0), reward, get_value(new_state, best_action(new_state, 0)))
+                
+            values[new_state[0]][new_state[1]] = (1-alpha) * values[new_state[0]][new_state[1]] + alpha * (reward + gamma * get_value(new_state, best_action(new_state, 0))) # fundamental bellman equation update
+            state = new_state
+            if state[0] == 3 and state[1] == 22: count += 1
+            data.append(values[15][13])
 
-            values[new_state] = (1-alpha) * values[new_state] + alpha * (reward + gamma * get_value(new_state, best_action(new_state, 0))) # fundamental bellman equation update
-            new_value = values[new_state] # go back through all the deterministic states we sped through and give them Q-values
-            for i in range(len(skippers) - 1, -1, -1):
-                values[skippers[i]] = new_value
-                new_value -= scores[cantor_pair(*skippers[i])] # the Q-value of a deterministic state is the Q-value of the following state minus its reward
-
-            state = new_state # update state
+        if episode % 100 == 0: print(episode)
+    print('percent',count / num_episodes)
+    plt.plot(data)
+    plt.show()
 
 def evaluate():
     '''evaluate() -> None
@@ -89,10 +98,12 @@ def evaluate():
         performance += reward
         state = new_state
 
-    print('Ended evaluation at: ' + str(state))
+    #print('Ended evaluation at: ' + str(state))
     return performance
 
 def main():
+    # try ten values of lamda 0.1 - 1
+    # evaluate lamda on 5 trials, take median result
     learn()
     plt.imshow(values) # visualize the value function
     plt.show()
@@ -112,24 +123,29 @@ def take_action(state, action):
     '''take_action(arr, arr) -> int, arr
     inputs current state and action to take, and outputs new state and reward acquired in the process
     this is transitions dynamis function'''
-    new_state = (state[0] + action[0], state[1] + action[1])
-
+    global visited
+    new_state = [state[0] + action[0], state[1] + action[1]]
     reward = get_reward(new_state)
+
     return [reward, new_state]
 
 def get_reward(new_state):
     '''get_reward(tuple) -> int
     computes and returns reward for entering new_state'''
-    return scores[cantor_pair(*new_state)]
+    score = scores[cantor_pair(*new_state)]
+    return score
 
 def get_value(state, action):
     '''get_value(tuple, tuple) -> int
     gives the value of the next state, given the current state we are in and the action we're about to take'''
-    return values[state[0]+action[0]][state[1]+action[1]]
+    new_state = [state[0] + action[0], state[1] + action[1]]
+
+    return values[new_state[0]][new_state[1]]
 
 def get_action_space(state):
     ''''get_action_space(tuple) -> arr
     outputs list of all possible actions that may be taken in state'''
+    if is_terminal(state): return []
     output = []
     global visited
     for action in actions:
@@ -145,7 +161,7 @@ def best_action(state, epsilon):
     poss_actions = get_action_space(state)
     if random.random() < epsilon: return random.choice(poss_actions)
     if len(poss_actions) == 0:
-        return [0,1]
+        return [0,0]
 
     best_action, best_value = poss_actions[0], get_value(state, poss_actions[0])
     for action in poss_actions:
