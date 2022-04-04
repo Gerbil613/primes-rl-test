@@ -44,10 +44,7 @@ num_episodes = 10000 # number of training episodes
 gamma = 0.99 # discount factor
 epsilon = 0.1 # greed factor
 alpha = 0.4 # learning rate
-
-# why does QVal(15,13) blow up linearly?
-# optimal path is not simply one of 12 -- it is nested deep inside, requiring several previous decisions to have been made.
-#   therefore, we only reach optimal path 1.56% of the time
+deviation = 3
 
 # decrease epsilon
 # adversarial models (reward based)
@@ -62,7 +59,6 @@ def learn():
     global visited, values, gamma
 
     values = np.zeros((height, width)) # intialize
-    data = []
     count = 0
     for episode in range(num_episodes):
         state = start
@@ -71,24 +67,20 @@ def learn():
             visited.add(cantor_pair(*state)) # mark that we visited here
             action = best_action(state, epsilon) # get best action according to current policy
             reward, new_state = take_action(state, action) # take action and observe reward, new state
-            if get_value(new_state, best_action(new_state, 0)) > 0 and state[0] == 15 and state[1] == 11:
-                print(new_state, best_action(new_state, 0), reward, get_value(new_state, best_action(new_state, 0)))
                 
             values[new_state[0]][new_state[1]] = (1-alpha) * values[new_state[0]][new_state[1]] + alpha * (reward + gamma * get_value(new_state, best_action(new_state, 0))) # fundamental bellman equation update
             state = new_state
             if state[0] == 3 and state[1] == 22: count += 1
-            data.append(values[15][13])
 
         if episode % 100 == 0: print(episode)
     print('percent',count / num_episodes)
-    plt.plot(data)
-    plt.show()
 
 def evaluate():
     '''evaluate() -> None
     evaluates the global var "values" according to a deterministic (non-epsilon) greedy policy'''
-    global visited
+    global visited, deviation
     performance = 0
+    deviation = 0
     state = start
     visited = set()
     # simply loop and keep on using policy to progress through maze
@@ -132,7 +124,7 @@ def take_action(state, action):
 def get_reward(new_state):
     '''get_reward(tuple) -> int
     computes and returns reward for entering new_state'''
-    score = scores[cantor_pair(*new_state)]
+    score = np.random.normal(loc=scores[cantor_pair(*new_state)], scale=deviation)
     return score
 
 def get_value(state, action):
