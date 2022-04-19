@@ -44,14 +44,10 @@ num_episodes = 10000 # number of training episodes
 gamma = 0.99 # discount factor
 epsilon = 0.1 # greed factor
 alpha = 0.4 # learning rate
-deviation = 3
 
-# decrease epsilon
-# adversarial models (reward based)
-# develop meaningful abstraction despite limited branches
-# - specific attack for game? how much knowledge of MDP?
-# nondeterministic rewards?
-# - adversary is shifting the gaussian of rewards
+reward_deviation = 10
+attack_budget = 100
+
 
 def learn():
     '''learn() -> None
@@ -78,9 +74,9 @@ def learn():
 def evaluate():
     '''evaluate() -> None
     evaluates the global var "values" according to a deterministic (non-epsilon) greedy policy'''
-    global visited, deviation
+    global visited, reward_deviation
     performance = 0
-    deviation = 0
+    reward_deviation = 0
     state = start
     visited = set()
     # simply loop and keep on using policy to progress through maze
@@ -124,7 +120,7 @@ def take_action(state, action):
 def get_reward(new_state):
     '''get_reward(tuple) -> int
     computes and returns reward for entering new_state'''
-    score = np.random.normal(loc=scores[cantor_pair(*new_state)], scale=deviation)
+    score = np.random.normal(loc=scores[cantor_pair(*new_state)], scale=reward_deviation)
     return score
 
 def get_value(state, action):
