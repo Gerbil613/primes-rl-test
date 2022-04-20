@@ -3,8 +3,8 @@ from copy import deepcopy
 import random
 import matplotlib.pyplot as plt
 
-def cantor_pair(a, b): # used as a hash function for states (which are represented by two independent numbers)
-    return int(1/2 * (a + b) * (a + b + 1) + b)
+def hash(a, b): # used as a hash function for states (which are represented by two independent numbers)
+    return a * 99999 + b
 
 blocks = [] # list of invalid states (walls)
 terminals = [] # list of terminal states
@@ -19,16 +19,16 @@ with open('maze.txt', 'r') as maze_file:
         column = 0
         for item in line:
             if item == '|': # wall
-                blocks.append(cantor_pair(row, column))
+                blocks.append(hash(row, column))
             elif item == '*': # terminal state
-                terminals.append(cantor_pair(row, column))
-                scores[cantor_pair(row, column)] = 0 # no reward for start
+                terminals.append(hash(row, column))
+                scores[hash(row, column)] = 0 # no reward for start
             elif item == 's': # start state
                 start = [row, column]
-                scores[cantor_pair(row, column)] = 0 # no reward for terminal state itself
+                scores[hash(row, column)] = 0 # no reward for terminal state itself
 
             else: # regular state
-                scores[cantor_pair(row, column)] = int(item)
+                scores[hash(row, column)] = int(item)
             
             column += 1
 
@@ -46,8 +46,6 @@ epsilon = 0.1 # greed factor
 alpha = 0.4 # learning rate
 
 reward_deviation = 10
-attack_budget = 100
-
 
 def learn():
     '''learn() -> None
@@ -60,7 +58,7 @@ def learn():
         state = start
         visited = set()
         while not is_terminal(state): # so long as we don't hit an end
-            visited.add(cantor_pair(*state)) # mark that we visited here
+            visited.add(hash(*state)) # mark that we visited here
             action = best_action(state, epsilon) # get best action according to current policy
             reward, new_state = take_action(state, action) # take action and observe reward, new state
                 
@@ -81,7 +79,7 @@ def evaluate():
     visited = set()
     # simply loop and keep on using policy to progress through maze
     while not is_terminal(state):
-        visited.add(cantor_pair(*state))
+        visited.add(hash(*state))
         reward, new_state = take_action(state, best_action(state, 0))
         performance += reward
         state = new_state
@@ -100,12 +98,12 @@ def main():
 def is_blocked(state):
     '''is_blocked(tuple) -> bool
     outputs whether the state is a wall'''
-    return cantor_pair(*state) in blocks
+    return hash(*state) in blocks
 
 def is_terminal(state):
     '''is_terminal(tuple) -> bool
     outputs whether the state is a terminal state'''
-    return cantor_pair(*state) in terminals
+    return hash(*state) in terminals
 
 def take_action(state, action):
     '''take_action(arr, arr) -> int, arr
@@ -120,7 +118,7 @@ def take_action(state, action):
 def get_reward(new_state):
     '''get_reward(tuple) -> int
     computes and returns reward for entering new_state'''
-    score = np.random.normal(loc=scores[cantor_pair(*new_state)], scale=reward_deviation)
+    score = np.random.normal(loc=scores[hash(*new_state)], scale=reward_deviation)
     return score
 
 def get_value(state, action):
@@ -138,7 +136,7 @@ def get_action_space(state):
     global visited
     for action in actions:
         new_state = [state[0] + action[0], state[1] + action[1]]
-        if not is_blocked(new_state) and cantor_pair(*new_state) not in visited and new_state[0] >= 0 and new_state[0] < height and new_state[1] >= 0 and new_state[1] < width:
+        if not is_blocked(new_state) and hash(*new_state) not in visited and new_state[0] >= 0 and new_state[0] < height and new_state[1] >= 0 and new_state[1] < width:
             output.append(action)
 
     return output
