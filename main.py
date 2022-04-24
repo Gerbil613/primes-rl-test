@@ -129,6 +129,20 @@ def main():
     plt.imshow(values) # visualize the value function
     plt.show()
     print('Evaluated score: ' + str(evaluate()))
+    
+def print_rewards(row, column, reward):
+    '''print_rewards(int, int, int) -> None
+    prints out all the rewards for every possible path in the maze'''
+    if is_terminal([row, column]):
+        print(reward)
+        return
+
+    visited.add(hash(row, column))
+    for action in actions:
+        if row + action[0] < 0 or row + action[0] >= height or column + action[1] < 0 or column + action[1] >= width: continue
+        index = hash(row + action[0], column + action[1])
+        if index not in blocks and index not in visited:
+            print_rewards(row + action[0], column + action[1], reward + scores[index])
 
 def is_blocked(state):
     '''is_blocked(tuple) -> bool
