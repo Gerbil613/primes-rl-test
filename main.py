@@ -45,7 +45,8 @@ gamma = 0.99 # discount factor
 epsilon = 0.1 # greed factor
 alpha = 0.4 # learning rate
 
-reward_deviation = 10
+reward_deviation = 3
+trans_attack_prob = 0
 
 def learn():
     '''learn() -> None
@@ -75,6 +76,7 @@ def evaluate():
     global visited, reward_deviation
     performance = 0
     reward_deviation = 0
+    trans_attack_prob = 0
     state = start
     visited = set()
     # simply loop and keep on using policy to progress through maze
@@ -108,9 +110,13 @@ def is_terminal(state):
 def take_action(state, action):
     '''take_action(arr, arr) -> int, arr
     inputs current state and action to take, and outputs new state and reward acquired in the process
-    this is transitions dynamis function'''
+    this is transitions dynamic function'''
     global visited
     new_state = [state[0] + action[0], state[1] + action[1]]
+    if len(get_action_space(state)) > 1 and random.random() < trans_attack_prob: # randomly choose
+        action = random.choice(get_action_space(state))
+        new_state = [state[0] + action[0], state[1] + action[1]]
+
     reward = get_reward(new_state)
 
     return [reward, new_state]
