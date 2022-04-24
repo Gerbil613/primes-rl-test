@@ -43,9 +43,9 @@ values = [] # will be initialized as np.array of shape (height, width), outputs 
 num_episodes = 10000 # number of training episodes
 gamma = 0.99 # discount factor
 epsilon = 0.1 # greed factor
-alpha = 0.4 # learning rate
+alpha = 0.5 # learning rate
 
-reward_deviation = 3
+reward_deviation = 8
 trans_attack_prob = 0
 
 def learn():
@@ -73,7 +73,7 @@ def learn():
 def evaluate():
     '''evaluate() -> None
     evaluates the global var "values" according to a deterministic (non-epsilon) greedy policy'''
-    global visited, reward_deviation
+    global visited, reward_deviation, trans_attack_prob
     performance = 0
     reward_deviation = 0
     trans_attack_prob = 0
