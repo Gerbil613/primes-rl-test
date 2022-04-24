@@ -126,8 +126,7 @@ def take_action(state, action):
     inputs current state and action to take, and outputs new state and reward acquired in the process
     this is transitions dynamic function'''
     global visited
-    '''new_state = [state[0] + action[0], state[1] + action[1]]'''
-    new_state = sampleTransitionFunction(action, state)
+    new_state = [state[0] + action[0], state[1] + action[1]]
     if len(get_action_space(state)) > 1 and random.random() < trans_attack_prob: # randomly choose
         action = random.choice(get_action_space(state))
         new_state = [state[0] + action[0], state[1] + action[1]]
