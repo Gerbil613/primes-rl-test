@@ -45,7 +45,7 @@ gamma = 0.99 # discount factor
 epsilon = 0.1 # greed factor
 alpha = 0.5 # learning rate
 
-reward_deviation = 8
+reward_deviation = 25
 trans_attack_prob = 0
 
 def learn():
