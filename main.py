@@ -185,7 +185,7 @@ def sampleTransitionFunction(action, state):
     if action==actions[3]:
         action_number=3
 
-    state_number = rcToTransition(state)
+    state_number = rcToTransition(*state)
 
     for i in range(width):
         counter=counter+transition_function[state_number][i][action_number]
