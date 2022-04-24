@@ -47,7 +47,7 @@ alpha = 0.4 # learning rate
 
 reward_deviation = 3
 trans_attack_prob = 0
-transition_function = np.zeros(shape=(width,width,4))
+transition_function = numpy.zeros(shape=(width,width,4))
 '''current state,new state,action'''
 
 def initTransition():
@@ -63,7 +63,7 @@ def initTransition():
                 '''checking if the current element's current state is a wall or terminal state'''
                 for l in range(len(blocks)):
                     if hash(transitionToRC(i))==blocks[l]: valid_state=False
-                for l in range(len(terminals)):
+                for l in range(len(terminal)):
                     if hash(transitionToRC(i))==blocks[l]: valid_state=False
                     '''if it's a legit state, we set the corresponding new state'''
                 if valid_state:
@@ -129,6 +129,20 @@ def main():
     plt.imshow(values) # visualize the value function
     plt.show()
     print('Evaluated score: ' + str(evaluate()))
+    
+def print_rewards(row, column, reward):
+    '''print_rewards(int, int, int) -> None
+    prints out all the rewards for every possible path in the maze'''
+    if is_terminal([row, column]):
+        print(reward)
+        return
+
+    visited.add(hash(row, column))
+    for action in actions:
+        if row + action[0] < 0 or row + action[0] >= height or column + action[1] < 0 or column + action[1] >= width: continue
+        index = hash(row + action[0], column + action[1])
+        if index not in blocks and index not in visited:
+            print_rewards(row + action[0], column + action[1], reward + scores[index])
 
 def is_blocked(state):
     '''is_blocked(tuple) -> bool
