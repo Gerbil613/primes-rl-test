@@ -12,7 +12,7 @@ start = None # state at which we start
 scores = {} # dict maps the hash of a state to the reward associated with it
 width, height = None, None
 visited = set() # global var listing all the states we have visited in the current trajectory; useful for stopping us from going backwards
-with open('maze_simple.txt', 'r') as maze_file:
+with open('super_simple_maze.txt', 'r') as maze_file:
     row = 0
     for line in maze_file.readlines():
         line = line.strip('\n').split(' ')
@@ -45,7 +45,7 @@ gamma = 0.99 # discount factor
 epsilon = 0.1 # greed factor
 alpha = 0.4 # learning rate
 
-reward_deviation = 3
+reward_deviation = 0
 trans_attack_prob = 0
 transition_function = np.zeros(shape=(width*height,width*height,4))
 '''current state,new state,action'''
@@ -138,6 +138,7 @@ def evaluate():
     while not is_terminal(state):
         visited.add(hash(*state))
         reward, new_state = take_action(state, best_action(state, 0))
+        print(new_state)
         performance += reward
         state = new_state
 
@@ -230,14 +231,16 @@ def get_value(state, action):
     '''CHANGE THIS TO BE GET EXPECTED VALUE -- AS ACCORDING TO NONDETERMINISTIC TRANSITION MATRIX PROBABILITES!!'''
     '''get_value(tuple, tuple) -> int
     gives the value of the next state, given the current state we are in and the action we're about to take'''
-    '''[action_number,state_number]=getStateActionNumbers(state,action)
+    [action_number,state_number]=getStateActionNumbers(state,action)
+    value=0
     for i in range (width*height):
-        [row,column]=transitionToRC(i)
-        value=value+transition_function[state_number][i][action_number]*values[row][column]'''
+        row,column=transitionToRC(i)
+        value=value+transition_function[state_number][i][action_number]*values[row][column]
+    return value
     '''print('value bruh')
     print(values[new_state[0]][new_state[1]])'''
-    new_state = [state[0] + action[0], state[1] + action[1]]
-    return values[new_state[0]][new_state[1]]
+'''
+    return values[new_state[0]][new_state[1]]'''
 
 def get_action_space(state):
     ''''get_action_space(tuple) -> arr
