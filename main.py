@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 def hash(a, b): # used as a hash function for states (which are represented by two independent numbers)
     return a * 99999 + b
 
-blocks = [] # list of invalid states (walls)
-terminals = [] # list of terminal states
+blocks = set([]) # list of invalid states (walls)
+terminals = set([]) # list of terminal states
 start = None # state at which we start
 scores = {} # dict maps the hash of a state to the reward associated with it
 width, height = None, None
@@ -19,9 +19,9 @@ with open('maze.txt', 'r') as maze_file:
         column = 0
         for item in line:
             if item == '|': # wall
-                blocks.append(hash(row, column))
+                blocks.add(hash(row, column))
             elif item == '*': # terminal state
-                terminals.append(hash(row, column))
+                terminals.add(hash(row, column))
                 scores[hash(row, column)] = 0 # no reward for start
             elif item == 's': # start state
                 start = [row, column]
@@ -92,10 +92,25 @@ def evaluate():
 def main():
     # try ten values of lamda 0.1 - 1
     # evaluate lamda on 5 trials, take median result
-    learn()
+    '''learn()
     plt.imshow(values) # visualize the value function
     plt.show()
-    print('Evaluated score: ' + str(evaluate()))
+    print('Evaluated score: ' + str(evaluate()))'''
+    print_rewards(start[0], start[1], 0)
+
+def print_rewards(row, column, reward):
+    '''print_rewards(int, int, int) -> None
+    prints out all the rewards for every possible path in the maze'''
+    if is_terminal([row, column]):
+        print(reward)
+        return
+
+    visited.add(hash(row, column))
+    for action in actions:
+        if row + action[0] < 0 or row + action[0] >= height or column + action[1] < 0 or column + action[1] >= width: continue
+        index = hash(row + action[0], column + action[1])
+        if index not in blocks and index not in visited:
+            print_rewards(row + action[0], column + action[1], reward + scores[index])
 
 def is_blocked(state):
     '''is_blocked(tuple) -> bool
