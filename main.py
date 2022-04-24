@@ -47,7 +47,7 @@ alpha = 0.4 # learning rate
 
 reward_deviation = 3
 trans_attack_prob = 0
-transition_function = numpy.zeros(shape=(width,width,4))
+transition_function = np.zeros(shape=(width,width,4))
 '''current state,new state,action'''
 
 def initTransition():
@@ -63,7 +63,7 @@ def initTransition():
                 '''checking if the current element's current state is a wall or terminal state'''
                 for l in range(len(blocks)):
                     if hash(transitionToRC(i))==blocks[l]: valid_state=False
-                for l in range(len(terminal)):
+                for l in range(len(terminals)):
                     if hash(transitionToRC(i))==blocks[l]: valid_state=False
                     '''if it's a legit state, we set the corresponding new state'''
                 if valid_state:
