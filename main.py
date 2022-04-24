@@ -47,39 +47,6 @@ alpha = 0.4 # learning rate
 
 reward_deviation = 3
 trans_attack_prob = 0
-transition_function = np.zeros(shape=(width,width,4))
-'''current state,new state,action'''
-
-def initTransition():
-    '''initializes the transition function (default setting is original deterministic)'''
-    valid_state = True
-    i=0
-    for i in range(width): 
-        j=0
-        for j in range(width):
-            k=0
-            for k in range(4):
-                l=0
-                '''checking if the current element's current state is a wall or terminal state'''
-                for l in range(len(blocks)):
-                    if hash(transitionToRC(i))==blocks[l]: valid_state=False
-                for l in range(len(terminals)):
-                    if hash(transitionToRC(i))==blocks[l]: valid_state=False
-                    '''if it's a legit state, we set the corresponding new state'''
-                if valid_state:
-                    if rcToTransition(transitionToRC(i)+actions[k])==j:
-                        transition_function[i][j][k]=1
-
-def transitionToRC(transition_index):
-    '''converts transition matrix index number to row and column'''
-    column = transition_index%width
-    row = (transition_index-column)/width
-    return[row,column]
-
-def rcToTransition(row,column):
-    '''converts row and column to transition matrix index number (of current state)'''
-    transition=column+row*width
-    return transition
 
 def learn():
     '''learn() -> None
@@ -168,33 +135,6 @@ def take_action(state, action):
     reward = get_reward(new_state)
 
     return [reward, new_state]
-
-def sampleTransitionFunction(action, state):
-    '''very sus sampling function to transition to next state according to the transition matrix probabilities and current state+action'''
-    random_var = random.random()
-    counter=0
-    i=0
-    action_number=0
-    
-    if action==actions[0]:
-        action_number=0
-    if action==actions[1]:
-        action_number=1
-    if action==actions[2]:
-        action_number=2
-    if action==actions[3]:
-        action_number=3
-
-    state_number = rcToTransition(*state)
-
-    for i in range(width):
-        counter=counter+transition_function[state_number][i][action_number]
-        if random_var<counter:
-            new_state_transition=i
-            break
-
-    new_state_rc=transitionToRC(new_state_transition)
-    return new_state_rc
 
 def get_reward(new_state):
     '''get_reward(tuple) -> int
