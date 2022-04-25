@@ -42,7 +42,7 @@ actions = [[1,0],[0,1],[-1,0],[0,-1]] # action space (usually is subset of this 
 values = [] # will be initialized as np.array of shape (height, width), outputs value
 num_episodes = 10000 # number of training episodes
 gamma = 0.99 # discount factor
-epsilon = 0.1 # greed factor
+epsilon = 0.001 # greed factor
 alpha = 0.5 # learning rate
 
 reward_deviation = 25
