@@ -12,7 +12,7 @@ start = None # state at which we start
 scores = {} # dict maps the hash of a state to the reward associated with it
 width, height = None, None
 visited = set() # global var listing all the states we have visited in the current trajectory; useful for stopping us from going backwards
-with open('super_simple_maze.txt', 'r') as maze_file:
+with open('simplest_maze.txt', 'r') as maze_file:
     row = 0
     for line in maze_file.readlines():
         line = line.strip('\n').split(' ')
@@ -205,6 +205,7 @@ def take_action(state, action):
 
 def sampleTransitionFunction(action, state):
     '''very sus sampling function to transition to next state according to the transition matrix probabilities and current state+action'''
+    '''basically we loop thru the matrix for the column w/ fixed current state and action and add up the probabilities and see if our chosen random number falls under this range'''
     random_var = random.random()
     counter=0
     i=0
