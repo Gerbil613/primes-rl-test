@@ -38,11 +38,12 @@ with open('simplest_maze.txt', 'r') as maze_file:
     height = row
 
 actions = [[1,0],[0,1],[-1,0],[0,-1]] # action space (usually is subset of this b/c walls)
+'''down, right, up, left'''
 
 values = [] # will be initialized as np.array of shape (height, width), outputs value
 num_episodes = 10000 # number of training episodes
 gamma = 0.99 # discount factor
-epsilon = 1 # greed factor
+epsilon = 0.05 # greed factor
 alpha = 0.4 # learning rate
 
 reward_deviation = 0
@@ -51,45 +52,18 @@ transition_function = np.zeros(shape=(width*height,width*height,4))
 '''current state,new state,action'''
 
 def initTransition():
+    '''9th index is the 9 reward, 11 is the 0 reward'''
     '''initializes the transition function (default setting is original deterministic)'''
     valid_state = True
     '''print(' init Transition ')'''
-
-    for l in range(len(blocks)):
-        '''print(' blocks for loop ')'''
-        for m in range(width*height):
-            for n in range(4):
-                transition_function[rcToTransition(unhash(blocks[l])[0],unhash(blocks[l])[1])][m][n]=-1
-    for l in range(len(terminals)):
-        '''print(' terminals for loop ')'''
-        for m in range(width*height):
-            for n in range(4):
-                transition_function[rcToTransition(unhash(terminals[l])[0],unhash(terminals[l])[1])][m][n]=-1
-
-    for i in range(width*height): 
-        '''print(' 1st for loop ')'''
-        for j in range(width*height):
-            '''print(' 2nd for loop ')'''
-            for k in range(4):
-                '''print(' 3rd for loop ')'''              
-                '''checking if the current element's current state is a wall or terminal state'''
-                '''if it's a legit state, we set the corresponding new state
-                print((transitionToRC(i)[0]+actions[k][0]),(transitionToRC(i)[1]+actions[k][1]))'''
-                if transition_function[i][j][k]==0 and rcToTransition((transitionToRC(i)[0]+actions[k][0]),(transitionToRC(i)[1]+actions[k][1]))==j:
-                    transition_function[i][j][k]=1
-                    '''print('filling in 1s')'''
-    '''print('and we r out!')'''
-    for l in range(len(blocks)):
-        '''print(' blocks for loop ')'''
-        for m in range(width*height):
-            for n in range(4):
-                transition_function[rcToTransition(unhash(blocks[l])[0],unhash(blocks[l])[1])][m][n]=0
-    for l in range(len(terminals)):
-        '''print(' terminals for loop ')'''
-        for m in range(width*height):
-            for n in range(4):
-                transition_function[rcToTransition(unhash(terminals[l])[0],unhash(terminals[l])[1])][m][n]=0
-                '''print('setting terminals to 0')'''
+    transition_function[10][9][3]=0
+    transition_function[10][11][3]=1
+    transition_function[10][11][1]=0
+    transition_function[10][9][1]=1
+    '''from start state going up and going into terminal states'''
+    transition_function[17][10][2]=1
+    transition_function[11][12][1]=1
+    transition_function[9][8][3]=1
 
 
 
@@ -127,6 +101,9 @@ def learn():
             action = best_action(state, epsilon) # get best action according to current policy
             '''print(action)'''
             reward, new_state = take_action(state, action) # take action and observe reward, new state
+            '''print('reward')
+            print(reward)'''
+
             values[new_state[0]][new_state[1]] = (1-alpha) * values[new_state[0]][new_state[1]] + alpha * (reward + gamma * get_value(new_state, best_action(new_state, 0))) # fundamental bellman equation update
             updateTransition(state)
             '''print('updateTransition happened')'''
@@ -142,22 +119,28 @@ def updateTransition(state):
         for j in range(4):
             transition_function[i][rcToTransition(state[0],state[1])][j]=0    
 
+
 def evaluate():
     '''evaluate() -> None
     evaluates the global var "values" according to a deterministic (non-epsilon) greedy policy'''
-    global visited, reward_deviation, trans_attack_prob
+    global visited, reward_deviation
     performance = 0
     reward_deviation = 0
     trans_attack_prob = 0
     state = start
     initTransition()
+    #setting transition matrix to be back to unperturbed original version
+    transition_function[10][9][3]=1
+    transition_function[10][11][3]=0
+    transition_function[10][11][1]=1
+    transition_function[10][9][1]=0
     visited = set()
     # simply loop and keep on using policy to progress through maze
     while not is_terminal(state):
         visited.add(hash(*state))
         reward, new_state = take_action(state, best_action(state, 0))
+        print(best_action(state,0))
         print(new_state)
-        '''updateTransition(state)'''
         performance += reward
         state = new_state
 
@@ -174,20 +157,6 @@ def main():
     plt.imshow(values) # visualize the value function
     plt.show()
     print('Evaluated score: ' + str(evaluate()))
-    
-def print_rewards(row, column, reward):
-    '''print_rewards(int, int, int) -> None
-    prints out all the rewards for every possible path in the maze'''
-    if is_terminal([row, column]):
-        print(reward)
-        return
-
-    visited.add(hash(row, column))
-    for action in actions:
-        if row + action[0] < 0 or row + action[0] >= height or column + action[1] < 0 or column + action[1] >= width: continue
-        index = hash(row + action[0], column + action[1])
-        if index not in blocks and index not in visited:
-            print_rewards(row + action[0], column + action[1], reward + scores[index])
 
 def is_blocked(state):
     '''is_blocked(tuple) -> bool
@@ -204,7 +173,13 @@ def take_action(state, action):
     inputs current state and action to take, and outputs new state and reward acquired in the process
     this is transitions dynamic function'''
     global visited
-    new_state = [state[0] + action[0], state[1] + action[1]]
+    '''new_state = [state[0] + action[0], state[1] + action[1]]'''
+    new_state = sampleTransitionFunction(action, state)
+    '''OLD ACTION-BASED ATTACK:
+        if len(get_action_space(state)) > 1 and random.random() < trans_attack_prob: # randomly choose
+        action = random.choice(get_action_space(state))
+        new_state = [state[0] + action[0], state[1] + action[1]]'''
+
     reward = get_reward(new_state)
 
     return [reward, new_state]
@@ -223,6 +198,13 @@ def sampleTransitionFunction(action, state):
 print(state_number)
     print(action_number)
     print(random_var)'''
+
+    '''PERTURBATIONS'''
+    perturbation_matrix=np.identity(width*height)
+    '''print(width*height)
+    print(len(transition_function[state_number, :, action_number]))'''
+    #transition_function[state_number, :, action_number] = np.matmul(perturbation_matrix, transition_function[state_number, :, action_number])
+
     for i in range(width*height):
         counter=counter+transition_function[state_number][i][action_number]
         
@@ -249,7 +231,7 @@ def getStateActionNumbers(state,action):
 
     state_number = rcToTransition(state[0],state[1])
     return[action_number,state_number]
-  
+
 def get_reward(new_state):
     '''get_reward(tuple) -> int
     computes and returns reward for entering new_state'''
