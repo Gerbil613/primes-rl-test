@@ -42,7 +42,7 @@ actions = [[1,0],[0,1],[-1,0],[0,-1]] # action space (usually is subset of this 
 values = [] # will be initialized as np.array of shape (height, width), outputs value
 num_episodes = 10000 # number of training episodes
 gamma = 0.99 # discount factor
-epsilon = 0.1 # greed factor
+epsilon = 1 # greed factor
 alpha = 0.4 # learning rate
 
 reward_deviation = 0
@@ -127,9 +127,6 @@ def learn():
             action = best_action(state, epsilon) # get best action according to current policy
             '''print(action)'''
             reward, new_state = take_action(state, action) # take action and observe reward, new state
-            '''print('reward')
-            print(reward)'''
-
             values[new_state[0]][new_state[1]] = (1-alpha) * values[new_state[0]][new_state[1]] + alpha * (reward + gamma * get_value(new_state, best_action(new_state, 0))) # fundamental bellman equation update
             updateTransition(state)
             '''print('updateTransition happened')'''
@@ -148,7 +145,7 @@ def updateTransition(state):
 def evaluate():
     '''evaluate() -> None
     evaluates the global var "values" according to a deterministic (non-epsilon) greedy policy'''
-    global visited, reward_deviation
+    global visited, reward_deviation, trans_attack_prob
     performance = 0
     reward_deviation = 0
     trans_attack_prob = 0
@@ -177,6 +174,20 @@ def main():
     plt.imshow(values) # visualize the value function
     plt.show()
     print('Evaluated score: ' + str(evaluate()))
+    
+def print_rewards(row, column, reward):
+    '''print_rewards(int, int, int) -> None
+    prints out all the rewards for every possible path in the maze'''
+    if is_terminal([row, column]):
+        print(reward)
+        return
+
+    visited.add(hash(row, column))
+    for action in actions:
+        if row + action[0] < 0 or row + action[0] >= height or column + action[1] < 0 or column + action[1] >= width: continue
+        index = hash(row + action[0], column + action[1])
+        if index not in blocks and index not in visited:
+            print_rewards(row + action[0], column + action[1], reward + scores[index])
 
 def is_blocked(state):
     '''is_blocked(tuple) -> bool
@@ -193,12 +204,7 @@ def take_action(state, action):
     inputs current state and action to take, and outputs new state and reward acquired in the process
     this is transitions dynamic function'''
     global visited
-    '''new_state = [state[0] + action[0], state[1] + action[1]]'''
-    new_state = sampleTransitionFunction(action, state)
-    if len(get_action_space(state)) > 1 and random.random() < trans_attack_prob: # randomly choose
-        action = random.choice(get_action_space(state))
-        new_state = [state[0] + action[0], state[1] + action[1]]
-
+    new_state = [state[0] + action[0], state[1] + action[1]]
     reward = get_reward(new_state)
 
     return [reward, new_state]
@@ -243,7 +249,7 @@ def getStateActionNumbers(state,action):
 
     state_number = rcToTransition(state[0],state[1])
     return[action_number,state_number]
-
+  
 def get_reward(new_state):
     '''get_reward(tuple) -> int
     computes and returns reward for entering new_state'''
