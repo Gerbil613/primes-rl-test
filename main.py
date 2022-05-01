@@ -42,10 +42,10 @@ actions = [[1,0],[0,1],[-1,0],[0,-1]] # action space (usually is subset of this 
 values = [] # will be initialized as np.array of shape (height, width), outputs value
 num_episodes = 10000 # number of training episodes
 gamma = 0.99 # discount factor
-epsilon = 0.001 # greed factor
-alpha = 0.5 # learning rate
+epsilon = 1 # greed factor
+alpha = 0.4 # learning rate
 
-reward_deviation = 25
+reward_deviation = 0
 trans_attack_prob = 0
 
 def learn():
@@ -62,6 +62,9 @@ def learn():
             visited.add(hash(*state)) # mark that we visited here
             action = best_action(state, epsilon) # get best action according to current policy
             reward, new_state = take_action(state, action) # take action and observe reward, new state
+            if len(get_action_space(state)) > 1 and random.random() < trans_attack_prob: # randomly choose
+                action = random.choice(get_action_space(state))
+                new_state = [state[0] + action[0], state[1] + action[1]]
                 
             values[new_state[0]][new_state[1]] = (1-alpha) * values[new_state[0]][new_state[1]] + alpha * (reward + gamma * get_value(new_state, best_action(new_state, 0))) # fundamental bellman equation update
             state = new_state
@@ -127,10 +130,6 @@ def take_action(state, action):
     this is transitions dynamic function'''
     global visited
     new_state = [state[0] + action[0], state[1] + action[1]]
-    if len(get_action_space(state)) > 1 and random.random() < trans_attack_prob: # randomly choose
-        action = random.choice(get_action_space(state))
-        new_state = [state[0] + action[0], state[1] + action[1]]
-
     reward = get_reward(new_state)
 
     return [reward, new_state]
