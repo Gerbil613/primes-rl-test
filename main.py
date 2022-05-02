@@ -59,12 +59,12 @@ def create_initial_transition():
         '''print(' blocks for loop ')'''
         for m in range(width*height):
             for n in range(4):
-                output[rcToTransition(unhash(blocks[l])[0],unhash(blocks[l])[1])][m][n]=-1
+                output[rc_to_transition(unhash(blocks[l])[0],unhash(blocks[l])[1])][m][n]=-1
     for l in range(len(terminals)):
         '''print(' terminals for loop ')'''
         for m in range(width*height):
             for n in range(4):
-                output[rcToTransition(unhash(terminals[l])[0],unhash(terminals[l])[1])][m][n]=-1
+                output[rc_to_transition(unhash(terminals[l])[0],unhash(terminals[l])[1])][m][n]=-1
 
     for i in range(width*height): 
         '''print(' 1st for loop ')'''
@@ -74,8 +74,8 @@ def create_initial_transition():
                 '''print(' 3rd for loop ')'''              
                 '''checking if the current element's current state is a wall or terminal state'''
                 '''if it's a legit state, we set the corresponding new state
-                print((transitionToRC(i)[0]+actions[k][0]),(transitionToRC(i)[1]+actions[k][1]))'''
-                if output[i][j][k]==0 and rcToTransition((transitionToRC(i)[0]+actions[k][0]),(transitionToRC(i)[1]+actions[k][1]))==j:
+                print((transition_to_rc(i)[0]+actions[k][0]),(transition_to_rc(i)[1]+actions[k][1]))'''
+                if output[i][j][k]==0 and rc_to_transition((transition_to_rc(i)[0]+actions[k][0]),(transition_to_rc(i)[1]+actions[k][1]))==j:
                     output[i][j][k]=1
                     '''print('filling in 1s')'''
     '''print('and we r out!')'''
@@ -83,12 +83,12 @@ def create_initial_transition():
         '''print(' blocks for loop ')'''
         for m in range(width*height):
             for n in range(4):
-                output[rcToTransition(unhash(blocks[l])[0],unhash(blocks[l])[1])][m][n]=0
+                output[rc_to_transition(unhash(blocks[l])[0],unhash(blocks[l])[1])][m][n]=0
     for l in range(len(terminals)):
         '''print(' terminals for loop ')'''
         for m in range(width*height):
             for n in range(4):
-                output[rcToTransition(unhash(terminals[l])[0],unhash(terminals[l])[1])][m][n]=0
+                output[rc_to_transition(unhash(terminals[l])[0],unhash(terminals[l])[1])][m][n]=0
                 '''print('setting terminals to 0')'''
 
     return output
@@ -97,13 +97,13 @@ def init_transition():
     global initial_transition_function, transition_function
     transition_function = deepcopy(initial_transition_function)
 
-def transitionToRC(transition_index):
+def transition_to_rc(transition_index):
     '''converts transition matrix index number to row and column'''
     column = transition_index%width
     row = int((transition_index-column)/width)
     return[row,column]
 
-def rcToTransition(row,column):
+def rc_to_transition(row,column):
     '''converts row and column to transition matrix index number (of current state)'''
     transition=column+row*width
     return transition
@@ -136,7 +136,7 @@ def learn():
 
 def set_transition_zero(state):
     '''setting already visited states to have transition probability 0'''
-    transition_function[:width*height][rcToTransition(state[0],state[1])][:4]=0    
+    transition_function[:width*height][rc_to_transition(state[0],state[1])][:4]=0    
 
 def evaluate():
     '''evaluate() -> None
@@ -221,7 +221,7 @@ def sampleTransitionFunction(action, state):
             new_state_transition=i
             break
 
-    new_state_rc=transitionToRC(new_state_transition)
+    new_state_rc=transition_to_rc(new_state_transition)
     return new_state_rc
 
 def getStateActionNumbers(state,action):
@@ -235,7 +235,7 @@ def getStateActionNumbers(state,action):
     if action==actions[3]:
         action_number=3
 
-    state_number = rcToTransition(state[0],state[1])
+    state_number = rc_to_transition(state[0],state[1])
     return[action_number,state_number]
   
 def get_reward(new_state):
