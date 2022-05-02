@@ -40,9 +40,9 @@ with open('maze.txt', 'r') as maze_file:
 actions = [[1,0],[0,1],[-1,0],[0,-1]] # action space (usually is subset of this b/c walls)
 
 values = np.zeros((height, width, 4)) # will be initialized as np.array of shape (height, width), outputs value
-num_episodes = 10000 # number of training episodes
+num_episodes = 1700 # number of training episodes
 gamma = 0.99 # discount factor
-epsilon = 0.1 # greed factor
+epsilon = 0.7 # greed factor
 alpha = 0.4 # learning rate
 
 reward_deviation = 0
