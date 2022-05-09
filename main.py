@@ -12,7 +12,7 @@ start = None # state at which we start
 scores = {} # dict maps the hash of a state to the reward associated with it
 width, height = None, None
 visited = set() # global var listing all the states we have visited in the current trajectory; useful for stopping us from going backwards
-with open('maze.txt', 'r') as maze_file:
+with open('simplest_maze.txt', 'r') as maze_file:
     row = 0
     for line in maze_file.readlines():
         line = line.strip('\n').split(' ')
@@ -40,13 +40,7 @@ with open('maze.txt', 'r') as maze_file:
 actions = [[1,0],[0,1],[-1,0],[0,-1]] # action space (usually is subset of this b/c walls)
 
 values = np.zeros((height, width, 4)) # will be initialized as np.array of shape (height, width), outputs value
-num_episodes = 1700 # number of training episodes
-gamma = 0.99 # discount factor
-epsilon = 0.7 # greed factor
-alpha = 0.4 # learning rate
 
-reward_deviation = 0
-trans_attack_prob = 0
 transition_function = None # just declare
 '''current state,new state,action'''
 
@@ -113,10 +107,10 @@ def unhash(hash):
     row=int((hash-column)/99999)
     return[row,column]
 
-def learn():
-    '''learn() -> None
+def learn(num_episodes, gamma, epsilon, alpha):
+    '''learn(int, float, float, float) -> None
     trains global variable "values" to learn Q-values of maze'''
-    global visited, values, gamma, transition_function
+    global visited, values, transition_function
 
     values = np.zeros((height, width, 4)) # intialize
     init_transition()
@@ -132,19 +126,15 @@ def learn():
             set_transition_zero(state)
             state = new_state
 
-        print(episode)
-
 def set_transition_zero(state):
     '''setting already visited states to have transition probability 0'''
     transition_function[:width*height][rc_to_transition(state[0],state[1])][:4]=0    
 
 def evaluate():
-    '''evaluate() -> None
+    '''evaluate() -> int
     evaluates the global var "values" according to a deterministic (non-epsilon) greedy policy'''
     global visited, reward_deviation, trans_attack_prob
     performance = 0
-    reward_deviation = 0
-    trans_attack_prob = 0
     state = start
     init_transition()
     visited = set()
@@ -162,12 +152,18 @@ def main():
     # try ten values of lamda 0.1 - 1
     # evaluate lamda on 5 trials, take median result
     global initial_transition_function, transition_function
-
     initial_transition_function = create_initial_transition()
-    init_transition()
-    print('learning...')
-    learn()
-    print('Evaluated score: ' + str(evaluate()))
+
+    data = []
+    num_trials = 100
+    for num_episodes in range(0, 71, 5):
+        sum = 0
+        for trial in range(num_trials):
+            print(num_episodes, trial)
+            learn(num_episodes, 0.99, 1, 0.4)
+            sum += evaluate()
+        data.append([num_episodes, sum / float(num_trials)])
+    print(data)
     
 def print_rewards(row, column, reward):
     '''print_rewards(int, int, int) -> None
@@ -241,8 +237,7 @@ def getStateActionNumbers(state,action):
 def get_reward(new_state):
     '''get_reward(tuple) -> int
     computes and returns reward for entering new_state'''
-    score = np.random.normal(loc=scores[hash(new_state[0],new_state[1])], scale=reward_deviation)
-    return score
+    return scores[hash(new_state[0],new_state[1])]
 
 def get_value(state, action):
     '''get_value(tuple, tuple) -> int
