@@ -154,8 +154,6 @@ def main():
     print('FINAL SCORE: ')
     print(final_score/10000)
 
-
-    
 def print_rewards(row, column, reward):
     '''print_rewards(int, int, int) -> None
     prints out all the rewards for every possible path in the maze'''
