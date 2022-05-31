@@ -40,6 +40,10 @@ with open('simplest_maze.txt', 'r') as maze_file:
 actions = [[1,0],[0,1],[-1,0],[0,-1]] # action space (usually is subset of this b/c walls)
 
 values = np.zeros((height, width, 4)) # will be initialized as np.array of shape (height, width), outputs value
+num_episodes = 10000 # number of training episodes
+gamma = 0.99 # discount factor
+epsilon = 0.7 # greed factor
+alpha = 0.4 # learning rate
 
 transition_function = None # just declare
 '''current state,new state,action'''
@@ -126,6 +130,8 @@ def learn(num_episodes, gamma, epsilon, alpha):
             set_transition_zero(state)
             state = new_state
 
+        if episode%100==0: print(episode)
+
 def set_transition_zero(state):
     '''setting already visited states to have transition probability 0'''
     transition_function[:width*height][rc_to_transition(state[0],state[1])][:4]=0    
@@ -194,7 +200,11 @@ def take_action(state, action):
     inputs current state and action to take, and outputs new state and reward acquired in the process
     this is transitions dynamic function'''
     global visited
-    new_state = [state[0] + action[0], state[1] + action[1]]
+    new_state = sampleTransitionFunction(action, state)
+    if len(get_action_space(state)) > 1 and random.random() < trans_attack_prob: # randomly choose
+        action = random.choice(get_action_space(state))
+        new_state = [state[0] + action[0], state[1] + action[1]]
+
     reward = get_reward(new_state)
 
     return [reward, new_state]
@@ -240,8 +250,10 @@ def get_reward(new_state):
     return scores[hash(new_state[0],new_state[1])]
 
 def get_value(state, action):
+    '''CHANGE THIS TO BE GET EXPECTED VALUE -- AS ACCORDING TO NONDETERMINISTIC TRANSITION MATRIX PROBABILITES!!'''
     '''get_value(tuple, tuple) -> int
     gives the value of the next state, given the current state we are in and the action we're about to take'''
+    
     if action == [0,0]: return 0 # this happens when we get the value at a terminal state; the computer tries the dummy action [0,0] at terminals
     return values[state[0]][state[1]][actions.index(action)]
 
