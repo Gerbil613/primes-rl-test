@@ -130,8 +130,6 @@ def learn(num_episodes, gamma, epsilon, alpha):
             set_transition_zero(state)
             state = new_state
 
-        if episode%100==0: print(episode)
-
 def set_transition_zero(state):
     '''setting already visited states to have transition probability 0'''
     transition_function[:width*height][rc_to_transition(state[0],state[1])][:4]=0    
@@ -160,16 +158,7 @@ def main():
     global initial_transition_function, transition_function
     initial_transition_function = create_initial_transition()
 
-    data = []
-    num_trials = 100
-    for num_episodes in range(0, 71, 5):
-        sum = 0
-        for trial in range(num_trials):
-            print(num_episodes, trial)
-            learn(num_episodes, 0.99, 1, 0.4)
-            sum += evaluate()
-        data.append([num_episodes, sum / float(num_trials)])
-    print(data)
+    learn(5000, 0.99, 0.7, 0.3)
     
 def print_rewards(row, column, reward):
     '''print_rewards(int, int, int) -> None
@@ -201,9 +190,6 @@ def take_action(state, action):
     this is transitions dynamic function'''
     global visited
     new_state = sampleTransitionFunction(action, state)
-    if len(get_action_space(state)) > 1 and random.random() < trans_attack_prob: # randomly choose
-        action = random.choice(get_action_space(state))
-        new_state = [state[0] + action[0], state[1] + action[1]]
 
     reward = get_reward(new_state)
 
