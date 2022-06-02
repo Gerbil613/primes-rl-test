@@ -99,6 +99,7 @@ def learn(num_episodes, gamma, epsilon, alpha):
         while not is_terminal(state): # so long as we don't hit an end
             action = best_action(state, epsilon) # get best action according to current policy
             reward, new_state = take_action(state, action) # take action and observe reward, new state
+            reward = 1/20 * np.log(reward + 1) + entropy(transition_function[hash(*state)][actions.index(action)]) # maxent transformation
             values[state[0]][state[1]][actions.index(action)] = \
                  (1-alpha) * get_value(state, action) + alpha * (reward + gamma * get_value(new_state, best_action(new_state, 0))) # fundamental bellman equation update
             state = new_state
@@ -143,6 +144,16 @@ def apply_transition_attack():
                     ))
                     x = transition_function[hash(*state)][actions.index(action)]
                     transition_function[hash(*state)][actions.index(action)] /= np.sum(x)
+
+def entropy(X):
+    '''entropy(arr) -> float
+    outputs shannon entropy of prob distribution x, which is represented by the 1d arr'''
+    sum = 0
+    for x in X:
+        if x != 0:
+            sum += x * np.log2(x)
+
+    return -sum
                     
 def is_blocked(state):
     '''is_blocked(tuple) -> bool
