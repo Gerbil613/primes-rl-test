@@ -12,7 +12,7 @@ scores = {} # dict maps the hash of a state to the reward associated with it
 transition_function = None # just declare
 corrupted_transition_function = None
 width, height = 25, 17
-attack_strength = 0.7
+attack_strength = 100
 
 actions = [[1,0],[0,1],[-1,0],[0,-1]] # action space (usually is subset of this b/c walls)
 values = np.zeros((height, width, 4)) # will be initialized as np.array of shape (height, width), outputs value
@@ -20,7 +20,12 @@ values = np.zeros((height, width, 4)) # will be initialized as np.array of shape
 def hash(a, b): # used as a hash function for states (which are represented by two independent numbers)
     return a * width + b
 
-with open('maze.txt', 'r') as maze_file:
+def unhash(hash):
+    column = hash % width
+    row = int((hash - column) / width)
+    return [row, column]
+
+with open('simplest_maze.txt', 'r') as maze_file:
     row = 0
     for line in maze_file.readlines():
         line = line.strip('\n').split(' ')
@@ -76,15 +81,26 @@ def stop_backtracking(row, column, visited, transition_function):
                 transition_function[hash(*new_state)][actions.index([-1*action[0], -1*action[1]])][hash(row, column)] = 0
                 stop_backtracking(*new_state, visited, transition_function)
 
-def init_transition():
-    '''sets global variable transition function to equal default one'''
-    global initial_transition_function, transition_function
-    transition_function = deepcopy(initial_transition_function)
+def create_corrupted_transition():
+    '''create_corrupted_transition() -> arr
+    adds some noise to transition function'''
+    output = deepcopy(initial_transition_function)
 
-def unhash(hash):
-    column=hash%width
-    row=int((hash-column)/width)
-    return[row,column]
+    for state in scores:
+        state = unhash(state)
+        action_space = get_action_space(state)
+        if len(action_space) >= 2:
+            poss_new_states = [[state[0] + action [0], state[1] + action[1]] for action in action_space]
+            for action in action_space:
+                for new_state in poss_new_states:
+                    output[hash(*state)][actions.index(action)][hash(*new_state)] += np.random.normal(
+                        loc = 0.0,
+                        scale = attack_strength
+                    )
+                    output[hash(*state)][actions.index(action)] -= np.min(output[hash(*state)][actions.index(action)])
+                    output[hash(*state)][actions.index(action)] /= np.sum(output[hash(*state)][actions.index(action)])
+
+    return output
 
 def learn(num_episodes, gamma, epsilon, alpha, defend=False):
     '''learn(int, float, float, float, bool) -> None
@@ -99,7 +115,7 @@ def learn(num_episodes, gamma, epsilon, alpha, defend=False):
         while not hash(*state) in terminals: # so long as we don't hit an end
             action = best_action(state, epsilon) # get best action according to current policy
             reward, new_state = take_action(state, action) # take action and observe reward, new state
-            if defend: reward = 1/20 * np.log(reward + 1) + entropy(transition_function[hash(*state)][actions.index(action)]) # maxent transformation
+            if defend: reward = 1/10 * np.log(reward + 1) + entropy(transition_function[hash(*state)][actions.index(action)]) # maxent transformation
             values[state[0]][state[1]][actions.index(action)] = \
                  (1-alpha) * get_value(state, action) + alpha * (reward + gamma * get_value(new_state, best_action(new_state, 0))) # fundamental bellman equation update
             state = new_state
@@ -127,36 +143,17 @@ def main():
     transition_function = initial_transition_function
     corrupted_transition_function = create_corrupted_transition()
 
+    print(klr_div(initial_transition_function.flatten(), corrupted_transition_function.flatten()))
     data = []
-    num_trials = 10
+    num_trials = 20
     defend = False
     for trial in range(num_trials):
         if trial >= num_trials / 2: defend = True
+        print('Trial',trial)
         learn(2000, 0.99, 0.7, 0.3, defend=defend)
         data.append(evaluate())
 
     print(data)
-
-def create_corrupted_transition():
-    '''create_corrupted_transition() -> arr
-    adds some noise to transition function'''
-    output = deepcopy(initial_transition_function)
-
-    for state in scores:
-        state = unhash(state)
-        action_space = get_action_space(state)
-        if len(action_space) >= 2:
-            poss_new_states = [[state[0] + action [0], state[1] + action[1]] for action in action_space]
-            for action in action_space:
-                for new_state in poss_new_states:
-                    output[hash(*state)][actions.index(action)][hash(*new_state)] = np.absolute(np.random.normal(
-                        loc = output[hash(*state)][actions.index(action)][hash(*new_state)],
-                        scale = attack_strength
-                    ))
-                    x = output[hash(*state)][actions.index(action)]
-                    output[hash(*state)][actions.index(action)] /= np.sum(x)
-
-    return output
 
 def take_action(state, action):
     '''take_action(arr, arr) -> int, arr
@@ -178,7 +175,6 @@ def get_reward(new_state):
     return scores[hash(new_state[0],new_state[1])]
 
 def get_value(state, action):
-    '''CHANGE THIS TO BE GET EXPECTED VALUE -- AS ACCORDING TO NONDETERMINISTIC TRANSITION MATRIX PROBABILITES!!'''
     '''get_value(tuple, tuple) -> int
     gives the value of the next state, given the current state we are in and the action we're about to take'''
     

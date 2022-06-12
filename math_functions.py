@@ -13,4 +13,9 @@ def entropy(X):
 def klr_div(p, q):
     '''klr_div(arr, arr) -> float
     outputs Kullback-Leibler divergence rate between two distributions'''
-    pass
+    div = 0
+    for i in range(len(p)):
+        if p[i] != 0 and q[i] != 0:
+            div += p[i] * np.log2(p[i] / q[i])
+
+    return div
