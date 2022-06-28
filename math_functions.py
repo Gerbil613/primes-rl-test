@@ -10,12 +10,11 @@ def entropy(X):
 
     return -sum
 
-def klr_div(p, q):
-    '''klr_div(arr, arr) -> float
-    outputs Kullback-Leibler divergence rate between two distributions'''
-    div = 0
+def lin_div(p, q):
+    '''lin_div(arr, arr) -> float
+    outputs average distance for two distributions'''
+    div = 0.0
     for i in range(len(p)):
-        if p[i] != 0 and q[i] != 0:
-            div += p[i] * np.log2(p[i] / q[i])
+        div += abs(p[i] - q[i])
 
-    return div
+    return div / len(p)

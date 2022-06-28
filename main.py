@@ -11,8 +11,7 @@ start = None # state at which we start
 scores = {} # dict maps the hash of a state to the reward associated with it
 transition_function = None # just declare
 corrupted_transition_function = None
-width, height = 25, 17
-attack_strength = 100
+width, height = 6, 3
 
 actions = [[1,0],[0,1],[-1,0],[0,-1]] # action space (usually is subset of this b/c walls)
 values = np.zeros((height, width, 4)) # will be initialized as np.array of shape (height, width), outputs value
@@ -52,7 +51,6 @@ with open('simplest_maze.txt', 'r') as maze_file:
 
 def create_initial_transition():
     '''creates a new instance of default transition function (default setting is original deterministic)'''
-    valid_state = True
     output = np.zeros(shape=(width*height, 4, width*height))
 
     for state in range(width*height):
@@ -81,41 +79,70 @@ def stop_backtracking(row, column, visited, transition_function):
                 transition_function[hash(*new_state)][actions.index([-1*action[0], -1*action[1]])][hash(row, column)] = 0
                 stop_backtracking(*new_state, visited, transition_function)
 
-def create_corrupted_transition():
+def create_corrupted_transition(worst_case=False, attack_strength=0):
     '''create_corrupted_transition() -> arr
     adds some noise to transition function'''
     output = deepcopy(initial_transition_function)
-
-    for state in scores:
-        state = unhash(state)
-        action_space = get_action_space(state)
-        if len(action_space) >= 2:
-            poss_new_states = [[state[0] + action [0], state[1] + action[1]] for action in action_space]
-            for action in action_space:
-                for new_state in poss_new_states:
-                    output[hash(*state)][actions.index(action)][hash(*new_state)] += np.random.normal(
-                        loc = 0.0,
-                        scale = attack_strength
-                    )
+    if not worst_case:
+        for state in scores:
+            state = unhash(state)
+            action_space = get_action_space(state)
+            if len(action_space) >= 2:
+                poss_new_states = [[state[0] + action [0], state[1] + action[1]] for action in action_space]
+                for action in action_space:
+                    for new_state in poss_new_states:
+                        output[hash(*state)][actions.index(action)][hash(*new_state)] += np.random.normal(
+                            loc = 0.0,
+                            scale = attack_strength
+                        )
                     output[hash(*state)][actions.index(action)] -= np.min(output[hash(*state)][actions.index(action)])
                     output[hash(*state)][actions.index(action)] /= np.sum(output[hash(*state)][actions.index(action)])
 
+        return output
+    
+    output[10][3][9] = 1 - attack_strength
+    output[10][3][11] = attack_strength
+    output[10][1][11] = 1 - attack_strength
+    output[10][1][9] = attack_strength
+
     return output
 
-def learn(num_episodes, gamma, epsilon, alpha, defend=False):
+def get_policy(values, epsilon):
+    '''get_policy(arr, float) -> arr
+    outputs the agent's actual policy distribution using epsilon-greedy'''
+    policy = np.zeros((height, width, 4))
+    for row in range(height):
+        for column in range(width):
+            best_action_index = 0
+            for action_index in range(1,4):
+                if values[row][column][action_index] > values[row][column][best_action_index]:
+                    best_action_index = action_index
+
+            for action_index in range(4):
+                if action_index == best_action_index:
+                    policy[row][column][action_index] = 1 - epsilon + epsilon/4.0
+
+                else:
+                    policy[row][column][action_index] = epsilon/4.0
+
+    return policy
+
+def learn(num_episodes, gamma, epsilon, alpha, defend=False, verbose=False):
     '''learn(int, float, float, float, bool) -> None
     trains global variable "values" to learn Q-values of maze'''
-    global visited, values
+    global visited, values, transition_function
 
     transition_function = corrupted_transition_function
+
     values = np.zeros((height, width, 4)) # intialize
     for episode in range(num_episodes):
         state = start
-        if episode % 100 == 0: print(episode)
+        if verbose:
+            if episode % 100 == 0: print(episode)
         while not hash(*state) in terminals: # so long as we don't hit an end
             action = best_action(state, epsilon) # get best action according to current policy
             reward, new_state = take_action(state, action) # take action and observe reward, new state
-            if defend: reward = 1/10 * np.log(reward + 1) + entropy(transition_function[hash(*state)][actions.index(action)]) # maxent transformation
+            if defend: reward = reward + entropy(get_policy(values, epsilon)[state[0]][state[1]]) # maxent transformation
             values[state[0]][state[1]][actions.index(action)] = \
                  (1-alpha) * get_value(state, action) + alpha * (reward + gamma * get_value(new_state, best_action(new_state, 0))) # fundamental bellman equation update
             state = new_state
@@ -137,21 +164,26 @@ def evaluate():
     return performance
 
 def main():
-    # DO NOT DELETE THESE TWO LINES; they're essential
+    # DO NOT DELETE THESE FOUR LINES; they're essential
     global initial_transition_function, transition_function, corrupted_transition_function
     initial_transition_function = create_initial_transition()
     transition_function = initial_transition_function
-    corrupted_transition_function = create_corrupted_transition()
+    corrupted_transition_function = create_corrupted_transition(worst_case=True, attack_strength=0)
 
-    print(klr_div(initial_transition_function.flatten(), corrupted_transition_function.flatten()))
     data = []
     num_trials = 20
-    defend = False
+    num_sub_trials = 10
+    attack_strength = 0
     for trial in range(num_trials):
-        if trial >= num_trials / 2: defend = True
-        print('Trial',trial)
-        learn(2000, 0.99, 0.7, 0.3, defend=defend)
-        data.append(evaluate())
+        print('Trial', trial+1, attack_strength)
+        corrupted_transition_function = create_corrupted_transition(worst_case=True, attack_strength=attack_strength)
+        avg = 0
+        for sub_trial in range(num_sub_trials):
+            learn(2000, 0.99, 0.7, 0.1, defend=True, verbose=False)
+            avg += evaluate()
+        
+        data.append(avg / float(num_sub_trials))
+        attack_strength += 1 / float(num_trials)
 
     print(data)
 
@@ -177,20 +209,18 @@ def get_reward(new_state):
 def get_value(state, action):
     '''get_value(tuple, tuple) -> int
     gives the value of the next state, given the current state we are in and the action we're about to take'''
-    
     if action == [0,0]: return 0 # this happens when we get the value at a terminal state; the computer tries the dummy action [0,0] at terminals
     return values[state[0]][state[1]][actions.index(action)]
 
 def get_action_space(state):
     ''''get_action_space(tuple) -> arr
     outputs list of all possible actions that may be taken in state'''
+    global transition_function
     if hash(*state) in terminals: return []
     output = []
     for action in actions:
-        new_state = [state[0] + action[0], state[1] + action[1]]
-        if new_state[0] >= 0 and new_state[0] < height and new_state[1] >= 0 and new_state[1] < width:
-            if transition_function[hash(*state)][actions.index(action)][hash(*new_state)] > 0:
-                output.append(action)
+        if np.any(np.greater(transition_function[hash(*state)][actions.index(action)], 0)): # if there are any nonzeros for this action
+            output.append(action)
 
     return output
 
@@ -198,8 +228,10 @@ def best_action(state, epsilon):
     '''best_action(tuple, float) -> tuple
     outputs the best action in the current state according to current value function, but takes random action with probability epsilon'''
     poss_actions = get_action_space(state)
+    #if state == [2,3]: print(poss_actions)
    
-    if random.random() < epsilon: return random.choice(poss_actions)
+    if random.random() < epsilon:
+        return random.choice(poss_actions)
     if len(poss_actions) == 0:
         return [0,0]
 
