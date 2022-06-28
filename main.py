@@ -109,21 +109,11 @@ def create_corrupted_transition(worst_case=False, attack_strength=0):
 
 def get_policy(values, epsilon):
     '''get_policy(arr, float) -> arr
-    outputs the agent's actual policy distribution using epsilon-greedy'''
+    outputs the agent's actual policy distribution using softmax on q-values'''
     policy = np.zeros((height, width, 4))
     for row in range(height):
         for column in range(width):
-            best_action_index = 0
-            for action_index in range(1,4):
-                if values[row][column][action_index] > values[row][column][best_action_index]:
-                    best_action_index = action_index
-
-            for action_index in range(4):
-                if action_index == best_action_index:
-                    policy[row][column][action_index] = 1 - epsilon + epsilon/4.0
-
-                else:
-                    policy[row][column][action_index] = epsilon/4.0
+            policy[row][column] = np.exp(values[row][column]) / np.sum(np.exp(values[row][column]))
 
     return policy
 
@@ -168,11 +158,11 @@ def main():
     global initial_transition_function, transition_function, corrupted_transition_function
     initial_transition_function = create_initial_transition()
     transition_function = initial_transition_function
-    corrupted_transition_function = create_corrupted_transition(worst_case=True, attack_strength=0)
+    corrupted_transition_function = create_corrupted_transition(worst_case=False, attack_strength=0)
 
     data = []
     num_trials = 20
-    num_sub_trials = 10
+    num_sub_trials = 20
     attack_strength = 0
     for trial in range(num_trials):
         print('Trial', trial+1, attack_strength)
