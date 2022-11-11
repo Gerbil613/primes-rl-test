@@ -1,20 +1,25 @@
-from venv import create
 import numpy as np
 from copy import deepcopy
 import random
 import matplotlib.pyplot as plt
 from math_functions import *
+from path import Path
 
 blocks = [] # list of invalid states (walls)
 terminals = [] # list of terminal states
 start = None # state at which we start
 scores = {} # dict maps the hash of a state to the reward associated with it
 transition_function = None # just declare
-corrupted_transition_function = None
 width, height = 6, 3
+
+p = 0.25
+delta = 4
 
 actions = [[1,0],[0,1],[-1,0],[0,-1]] # action space (usually is subset of this b/c walls)
 values = np.zeros((height, width, 4)) # will be initialized as np.array of shape (height, width), outputs value
+
+paths = [] # stores array of Path objects
+P_star = None
 
 def hash(a, b): # used as a hash function for states (which are represented by two independent numbers)
     return a * width + b
@@ -24,7 +29,7 @@ def unhash(hash):
     row = int((hash - column) / width)
     return [row, column]
 
-with open('simplest_maze.txt', 'r') as maze_file:
+with open('testmaze.txt', 'r') as maze_file:
     row = 0
     for line in maze_file.readlines():
         line = line.strip('\n').split(' ')
@@ -48,6 +53,54 @@ with open('simplest_maze.txt', 'r') as maze_file:
         row += 1
 
     height = row
+
+def get_degree(state):
+    '''get_degree(int) -> float
+    outputs number of paths through state; return float because output is used as denominator'''
+    count = 0.0
+    for path in paths:
+        if state in path: count += 1
+
+    return count
+    #return float(np.sum(np.any(transition_function[state], axis=1))) # compute how many states you can transitino to from this state
+
+def determine_path_to_corrupt():
+    P_p = P_star
+    for P_i in paths: # don't iterate over best path
+        if P_i.reward == P_star.reward: continue
+        b_i = 2 - 1 # TODO: temporary fix. I think the budget counter is always 1 too high bc of how i coded in the terminal state with *
+        for P_j in paths:
+            if P_j.reward == P_i.reward: continue
+
+            deg_star = 99999
+            for state in P_j:
+                if (state in P_i) != (state in P_star) and get_degree(state) < deg_star:
+                    deg_star = get_degree(state)
+            
+            b_i += 1/deg_star
+
+        if P_i.reward < P_p.reward and P_star.reward - b_i*p*delta < P_i.reward:
+            P_p = P_i
+
+    return P_p
+
+def get_paths_recursive(r, c, visited, current_path):
+    '''get_paths_recursive(int, int, set, arr, int) -> None
+    recursively finds every path in MDP and stores each one's constituent states and total reward sum'''
+    if hash(r,c) in terminals: # reached end of path
+        paths.append(current_path) # store the data 
+        return
+
+    visited.add(hash(r,c))
+
+    current_path.states.append(hash(r,c)) # add current state to path
+    current_path.reward += scores[hash(r, c)] # add reward to running total
+
+    for action in actions: # try each action and see which next states we can go to according to TF
+        for new_state_hashed, probability in enumerate(transition_function[hash(r,c)][actions.index(action)]):
+            new_r, new_c = unhash(new_state_hashed)[0], unhash(new_state_hashed)[1]
+            if probability > 0 and hash(new_r, new_c) not in visited: # this state is viable next option
+                get_paths_recursive(new_r, new_c, visited, deepcopy(current_path))
 
 def create_initial_transition():
     '''creates a new instance of default transition function (default setting is original deterministic)'''
@@ -79,34 +132,6 @@ def stop_backtracking(row, column, visited, transition_function):
                 transition_function[hash(*new_state)][actions.index([-1*action[0], -1*action[1]])][hash(row, column)] = 0
                 stop_backtracking(*new_state, visited, transition_function)
 
-def create_corrupted_transition(worst_case=False, attack_strength=0):
-    '''create_corrupted_transition() -> arr
-    adds some noise to transition function'''
-    output = deepcopy(initial_transition_function)
-    if not worst_case:
-        for state in scores:
-            state = unhash(state)
-            action_space = get_action_space(state)
-            if len(action_space) >= 2:
-                poss_new_states = [[state[0] + action [0], state[1] + action[1]] for action in action_space]
-                for action in action_space:
-                    for new_state in poss_new_states:
-                        output[hash(*state)][actions.index(action)][hash(*new_state)] += np.random.normal(
-                            loc = 0.0,
-                            scale = attack_strength
-                        )
-                    output[hash(*state)][actions.index(action)] -= np.min(output[hash(*state)][actions.index(action)])
-                    output[hash(*state)][actions.index(action)] /= np.sum(output[hash(*state)][actions.index(action)])
-
-        return output
-    
-    output[10][3][9] = 1 - attack_strength
-    output[10][3][11] = attack_strength
-    output[10][1][11] = 1 - attack_strength
-    output[10][1][9] = attack_strength
-
-    return output
-
 def get_policy(values, epsilon):
     '''get_policy(arr, float) -> arr
     outputs the agent's actual policy distribution using softmax on q-values'''
@@ -121,8 +146,6 @@ def learn(num_episodes, gamma, epsilon, alpha, defend=False, verbose=False):
     '''learn(int, float, float, float, bool) -> None
     trains global variable "values" to learn Q-values of maze'''
     global visited, values, transition_function
-
-    transition_function = corrupted_transition_function
 
     values = np.zeros((height, width, 4)) # intialize
     for episode in range(num_episodes):
@@ -153,29 +176,25 @@ def evaluate():
     #print('Ended evaluation at: ' + str(state))
     return performance
 
-def main():
-    # DO NOT DELETE THESE FOUR LINES; they're essential
-    global initial_transition_function, transition_function, corrupted_transition_function
+def init():
+    '''init() -> None
+    general variable initiation protocol; sets up transition function and stores all paths in MDP'''
+    global initial_transition_function, transition_function, P_star
     initial_transition_function = create_initial_transition()
     transition_function = initial_transition_function
-    corrupted_transition_function = create_corrupted_transition(worst_case=False, attack_strength=0)
 
-    data = []
-    num_trials = 20
-    num_sub_trials = 20
-    attack_strength = 0
-    for trial in range(num_trials):
-        print('Trial', trial+1, attack_strength)
-        corrupted_transition_function = create_corrupted_transition(worst_case=True, attack_strength=attack_strength)
-        avg = 0
-        for sub_trial in range(num_sub_trials):
-            learn(2000, 0.99, 0.7, 0.1, defend=True, verbose=False)
-            avg += evaluate()
-        
-        data.append(avg / float(num_sub_trials))
-        attack_strength += 1 / float(num_trials)
+    get_paths_recursive(*start, set(), Path([], 0))
+    paths.sort(reverse=True) # best is first
+    P_star = paths[0]
 
-    print(data)
+def main():
+    init()
+    switch_path = determine_path_to_corrupt()
+    print('Switch optimal path with path of reward ' + str(switch_path.reward))
+    '''learn(20000, 0.99, 0.7, 0.3, verbose=True)
+    print(evaluate())
+    plt.imshow(np.sum(values, axis=2))
+    plt.show()'''
 
 def take_action(state, action):
     '''take_action(arr, arr) -> int, arr
@@ -186,8 +205,6 @@ def take_action(state, action):
     return [reward, new_state]
 
 def sample_transition_function(state, action):
-    '''very sus sampling function to transition to next state according to the transition matrix probabilities and current state+action'''
-    '''basically we loop thru the matrix for the column w/ fixed current state and action and add up the probabilities and see if our chosen random number falls under this range'''
     distribution = transition_function[hash(*state)][actions.index(action)]
     return unhash(np.random.choice(range(width*height), p=distribution))
   
