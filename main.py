@@ -68,16 +68,16 @@ def determine_path_to_corrupt():
     P_p = P_star
     for P_i in paths: # don't iterate over best path
         if P_i.reward == P_star.reward: continue
-        b_i = 2 - 1 # TODO: temporary fix. I think the budget counter is always 1 too high bc of how i coded in the terminal state with *
+        b_i = 2
         for P_j in paths:
-            if P_j.reward == P_i.reward: continue
+            if P_j.reward == P_i.reward or P_j.reward == P_star.reward: continue
 
-            deg_star = 99999
+            deg_star = -1 # just need to initialize to something, is really infinity though
             for state in P_j:
-                if (state in P_i) != (state in P_star) and get_degree(state) < deg_star:
+                if (state in P_i) != (state in P_star) and (get_degree(state) < deg_star or deg_star == -1):
                     deg_star = get_degree(state)
             
-            b_i += 1/deg_star
+            if deg_star != -1: b_i += 1/deg_star
 
         if P_i.reward < P_p.reward and P_star.reward - b_i*p*delta < P_i.reward:
             P_p = P_i
