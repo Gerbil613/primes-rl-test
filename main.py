@@ -29,7 +29,7 @@ def unhash(hash):
     row = int((hash - column) / width)
     return [row, column]
 
-with open('testmaze.txt', 'r') as maze_file:
+with open('mazes/testmaze.txt', 'r') as maze_file:
     row = 0
     for line in maze_file.readlines():
         line = line.strip('\n').split(' ')
@@ -62,7 +62,6 @@ def get_degree(state):
         if state in path: count += 1
 
     return count
-    #return float(np.sum(np.any(transition_function[state], axis=1))) # compute how many states you can transitino to from this state
 
 def determine_path_to_corrupt():
     P_p = P_star
