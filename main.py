@@ -12,14 +12,19 @@ scores = {} # dict maps the hash of a state to the reward associated with it
 transition_function = None # just declare
 width, height = 6, 3
 
+RAND = 0
+GREED = 1
+
 p = 0.25
 delta = 4
 
 actions = [[1,0],[0,1],[-1,0],[0,-1]] # action space (usually is subset of this b/c walls)
 values = np.zeros((height, width, 4)) # will be initialized as np.array of shape (height, width), outputs value
+traversal_factors = {}
 
 paths = [] # stores array of Path objects
 P_star = None
+path_to_corrupt = None
 
 def hash(a, b): # used as a hash function for states (which are represented by two independent numbers)
     return a * width + b
@@ -54,16 +59,9 @@ with open('mazes/testmaze.txt', 'r') as maze_file:
 
     height = row
 
-def get_degree(state):
-    '''get_degree(int) -> float
-    outputs number of paths through state; return float because output is used as denominator'''
-    count = 0.0
-    for path in paths:
-        if state in path: count += 1
-
-    return count
-
 def determine_path_to_corrupt():
+    '''determine_path_to_corrupt() -> Path
+    outputs path in MDP that is best for adversary to corrupt'''
     P_p = P_star
     for P_i in paths: # don't iterate over best path
         if P_i.reward == P_star.reward: continue
@@ -71,21 +69,23 @@ def determine_path_to_corrupt():
         for P_j in paths:
             if P_j.reward == P_i.reward or P_j.reward == P_star.reward: continue
 
-            deg_star = -1 # just need to initialize to something, is really infinity though
+            opt = 0 # just need to initialize to something, is really infinity though
             for state in P_j:
-                if (state in P_i) != (state in P_star) and (get_degree(state) < deg_star or deg_star == -1):
-                    deg_star = get_degree(state)
+                if (state in P_i) != (state in P_star) and (traversal_factors[state] > opt):
+                    deg_star = traversal_factors[state]
             
-            if deg_star != -1: b_i += 1/deg_star
+            b_i += traversal_factors[state]
 
         if P_i.reward < P_p.reward and P_star.reward - b_i*p*delta < P_i.reward:
             P_p = P_i
 
     return P_p
 
-def get_paths_recursive(r, c, visited, current_path):
-    '''get_paths_recursive(int, int, set, arr, int) -> None
-    recursively finds every path in MDP and stores each one's constituent states and total reward sum'''
+def preload_path_data(r, c, visited, current_path, factor):
+    '''preload_path_data(int, int, set, arr, int) -> None
+    recursively finds every path in MDP and stores each one's constituent states and total reward sum
+    also calculates and stores traversal factor of every node'''
+    traversal_factors[hash(r,c)] = factor
     if hash(r,c) in terminals: # reached end of path
         paths.append(current_path) # store the data 
         return
@@ -99,7 +99,8 @@ def get_paths_recursive(r, c, visited, current_path):
         for new_state_hashed, probability in enumerate(transition_function[hash(r,c)][actions.index(action)]):
             new_r, new_c = unhash(new_state_hashed)[0], unhash(new_state_hashed)[1]
             if probability > 0 and hash(new_r, new_c) not in visited: # this state is viable next option
-                get_paths_recursive(new_r, new_c, visited, deepcopy(current_path))
+                new_factor = factor * 1/float(len(get_action_space((r,c))))
+                preload_path_data(new_r, new_c, visited, deepcopy(current_path), new_factor)
 
 def create_initial_transition():
     '''creates a new instance of default transition function (default setting is original deterministic)'''
@@ -141,23 +142,62 @@ def get_policy(values, epsilon):
 
     return policy
 
-def learn(num_episodes, gamma, epsilon, alpha, defend=False, verbose=False):
+def init():
+    '''init() -> None
+    general variable initiation and preprocessing protocol; sets up transition function and stores all paths in MDP'''
+    global initial_transition_function, transition_function, P_star, path_to_corrupt
+    initial_transition_function = create_initial_transition()
+    transition_function = initial_transition_function
+
+    preload_path_data(*start, set(), Path([], 0), 1)
+    paths.sort(reverse=True) # best is first
+    P_star = paths[0]
+    path_to_corrupt = determine_path_to_corrupt()
+
+def learn(num_episodes, gamma, epsilon, alpha, attack=False, maxent=False, victim=GREED, verbose=False, graph=False, lw=5, num_epochs=1):
     '''learn(int, float, float, float, bool) -> None
     trains global variable "values" to learn Q-values of maze'''
     global visited, values, transition_function
 
+    label = "Greedy Victim, " if victim == GREED else "Random Victim, "
+    label += "Adversary Present" if attack else "No Adversary Present"
+
+    if verbose:
+        print("COMMENCING TRAINING PROTOCOL\nNumber of Epochs: " + str(num_epochs) + "\nNumber of Episodes per Epoch: " + str(num_episodes))
+
     values = np.zeros((height, width, 4)) # intialize
-    for episode in range(num_episodes):
-        state = start
-        if verbose:
-            if episode % 100 == 0: print(episode)
-        while not hash(*state) in terminals: # so long as we don't hit an end
-            action = best_action(state, epsilon) # get best action according to current policy
-            reward, new_state = take_action(state, action) # take action and observe reward, new state
-            if defend: reward = reward + entropy(get_policy(values, epsilon)[state[0]][state[1]]) # maxent transformation
-            values[state[0]][state[1]][actions.index(action)] = \
-                 (1-alpha) * get_value(state, action) + alpha * (reward + gamma * get_value(new_state, best_action(new_state, 0))) # fundamental bellman equation update
-            state = new_state
+    performance_history = np.zeros((num_epochs, num_episodes))
+    for epoch in range(num_epochs):
+        for episode in range(num_episodes):
+            state = start
+            if verbose:
+                if episode % 100 == 0: print(episode)
+
+            while not hash(*state) in terminals: # so long as we don't hit an end
+                if victim == GREED:
+                    action = best_action(state, epsilon) # get best action according to current policy
+
+                else:
+                    action = random.choice(get_action_space(state))
+                reward, new_state = take_action(state, action) # take action and observe reward, new state
+
+                if np.random.random() < p and attack:
+                    if hash(*new_state) in path_to_corrupt and hash(*new_state) not in P_star:
+                        reward += delta
+
+                    elif hash(*new_state) not in path_to_corrupt and hash(*new_state) in P_star:
+                        reward -= delta
+
+                if maxent: reward = reward + entropy(get_policy(values, epsilon)[state[0]][state[1]]) # maxent transformation
+                values[state[0]][state[1]][actions.index(action)] = \
+                    (1-alpha) * get_value(state, action) + alpha * (reward + gamma * get_value(new_state, best_action(new_state, 0))) # fundamental bellman equation update
+                state = new_state
+
+            if graph:
+                performance_history[epoch][episode] = evaluate()
+
+    if graph:
+        plt.plot(range(num_episodes), np.average(performance_history, axis=0), label=label, alpha=0.5, lw=lw)
 
 def evaluate():
     '''evaluate() -> int
@@ -175,25 +215,17 @@ def evaluate():
     #print('Ended evaluation at: ' + str(state))
     return performance
 
-def init():
-    '''init() -> None
-    general variable initiation protocol; sets up transition function and stores all paths in MDP'''
-    global initial_transition_function, transition_function, P_star
-    initial_transition_function = create_initial_transition()
-    transition_function = initial_transition_function
-
-    get_paths_recursive(*start, set(), Path([], 0))
-    paths.sort(reverse=True) # best is first
-    P_star = paths[0]
-
 def main():
     init()
-    switch_path = determine_path_to_corrupt()
-    print('Switch optimal path with path of reward ' + str(switch_path.reward))
-    '''learn(20000, 0.99, 0.7, 0.3, verbose=True)
-    print(evaluate())
-    plt.imshow(np.sum(values, axis=2))
-    plt.show()'''
+    learn(100, 0.99, 0.3, 0.3, graph=True, attack=False, victim=RAND, lw=2, num_epochs=30)
+    learn(100, 0.99, 0.3, 0.3, graph=True, attack=True, victim=GREED, lw=3, num_epochs=30)
+    learn(100, 0.99, 0.3, 0.3, graph=True, attack=False, victim=GREED, lw=4, num_epochs=30)
+    learn(100, 0.99, 0.3, 0.3, graph=True, attack=True, victim=RAND, lw=5, num_epochs=30)
+
+    plt.legend(loc="upper right")
+    plt.xlabel('Episode')
+    plt.ylabel('Performance (Final Reward)')
+    plt.show()
 
 def take_action(state, action):
     '''take_action(arr, arr) -> int, arr
