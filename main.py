@@ -24,11 +24,11 @@ values = None
 traversal_factors = {}
 
 def hash(a, b): # used as a hash function for states (which are represented by two independent numbers)
-    return a * height + b
+    return a * width + b
 
 def unhash(hash):
     column = hash % width
-    row = hash // height
+    row = hash // width
     return [row, column]
 
 def load_maze(string):
@@ -88,10 +88,13 @@ def determine_path_to_corrupt():
 def preload_path_data(r, c, visited, current_path, factor):
     '''preload_path_data(int, int, set, arr, int) -> None
     a) recursively finds every path in MDP and stores each one's constituent states and total reward sum
-    b) calculates and stores traversal factor of every node'''
+    b) calculates and stores traversal factor of every node
+    c) sets up transition function'''
+    global paths, transition_function
+
     traversal_factors[hash(r,c)] = factor
     if hash(r,c) in terminals: # reached end of path
-        paths.append(current_path) # store the data 
+        paths.append(current_path) # store the data
         return
 
     visited.add(hash(r,c))
@@ -99,42 +102,19 @@ def preload_path_data(r, c, visited, current_path, factor):
     current_path.states.append(hash(r,c)) # add current state to path
     current_path.reward += scores[hash(r, c)] # add reward to running total
 
-    for action in actions: # try each action and see which next states we can go to according to TF
-        for new_state_hashed, probability in enumerate(transition_function[hash(r,c)][actions.index(action)]):
-            new_r, new_c = unhash(new_state_hashed)[0], unhash(new_state_hashed)[1]
-            if probability > 0 and hash(new_r, new_c) not in visited: # this state is viable next option
-                new_factor = factor * 1/float(np.sum(np.any(transition_function[hash(r,c)], axis=1)))
-                preload_path_data(new_r, new_c, visited, deepcopy(current_path), new_factor)
-
-def create_initial_transition():
-    '''creates a new instance of default transition function (default setting is original deterministic)'''
-    output = np.zeros(shape=(width*height, 4, width*height))
-
-    for state in range(width*height):
-        for new_state in range(width*height):
-            for action_ind in range(4):
-                action = actions[action_ind]
-                row, col, new_row, new_col = *unhash(state), *unhash(new_state)
-                if state not in blocks and new_state not in blocks and row + action[0] == new_row and col + action[1] == new_col:
-                    output[state][action_ind][new_state] = 1
-
-    stop_backtracking(*start, set(), output)
-    return output
-
-def stop_backtracking(row, column, visited, transition_function):
-    '''stop_backtracking(int, int, int, arr) -> None
-    recursive function that sets the inputted transition function so that you can't go backwards'''
-    if hash(row, column) in terminals:
-        return
-
-    visited.add(hash(row, column))
+    new_factor = 0
     for action in actions:
-        new_state = [row + action[0], column + action[1]]
-        if new_state[0] >= 0 and new_state[0] < height and new_state[1] >= 0 and new_state[1] < width:
-            
-            if hash(*new_state) in scores and hash(*new_state) not in visited:
-                transition_function[hash(*new_state)][actions.index([-1*action[0], -1*action[1]])][hash(row, column)] = 0
-                stop_backtracking(*new_state, visited, transition_function)
+        new_r, new_c =  r + action[0], c + action[1]
+        if hash(new_r,new_c) not in blocks and hash(new_r,new_c) not in visited and new_r >= 0 and new_c >= 0 and new_r < height and new_c < width:
+            new_factor += 1
+
+    new_factor = factor * 1/float(new_factor)
+
+    for action in actions: # try each action and see which next states we can go to according to TF
+        new_r, new_c =  r + action[0], c + action[1]
+        if hash(new_r,new_c) not in blocks and hash(new_r,new_c) not in visited and new_r >= 0 and new_c >= 0 and new_r < height and new_c < width:
+            transition_function[hash(r,c)][actions.index(action)][hash(new_r,new_c)] = 1
+            preload_path_data(new_r, new_c, visited, deepcopy(current_path), new_factor)
 
 def get_policy(values):
     '''get_policy(arr, float) -> arr
@@ -150,9 +130,8 @@ def init():
     '''init() -> None
     general variable initiation and preprocessing protocol; sets up transition function, reads maze data, and stores all paths in MDP'''
     load_maze('mazes/testmaze.txt')
-    global initial_transition_function, transition_function, P_star, path_to_corrupt
-    initial_transition_function = create_initial_transition()
-    transition_function = initial_transition_function
+    global transition_function, P_star, path_to_corrupt
+    transition_function = np.zeros((width*height,len(actions), width*height))
 
     preload_path_data(*start, set(), Path([], 0), 1)
     paths.sort(reverse=True) # best is first
@@ -205,10 +184,8 @@ def learn(num_episodes, gamma, epsilon, alpha, num_warm_episodes=50, attack=Fals
 def evaluate():
     '''evaluate() -> int
     evaluates the global var "values" according to a deterministic (non-epsilon) greedy policy'''
-    global transition_function
     performance = 0
     state = start
-    transition_function = initial_transition_function
     # simply loop and keep on using policy to progress through maze
     while not hash(*state) in terminals:
         reward, new_state = take_action(state, best_action(state, 0))
@@ -221,10 +198,10 @@ def evaluate():
 def main():
     init()
     print(path_to_corrupt)
-    learn(200, 0.99, 1, 0.3, graph=True, attack=False, lw=2, num_epochs=50, verbose=1)
-    learn(200, 0.99, 0.3, 0.3, graph=True, attack=True, lw=3, num_epochs=50, verbose=1)
-    learn(200, 0.99, 0.3, 0.3, graph=True, attack=False, lw=4, num_epochs=50, verbose=1)
-    learn(200, 0.99, 1, 0.3, graph=True, attack=True, lw=5, num_epochs=50, verbose=1)
+    learn(200, 0.99, 1, 0.3, graph=True, attack=False, lw=2, num_epochs=200, verbose=1)
+    learn(200, 0.99, 0.3, 0.3, graph=True, attack=True, lw=3, num_epochs=200, verbose=1)
+    learn(200, 0.99, 0.3, 0.3, graph=True, attack=False, lw=4, num_epochs=200, verbose=1)
+    learn(200, 0.99, 1, 0.3, graph=True, attack=True, lw=5, num_epochs=200, verbose=1)
 
     plt.legend(loc="lower right")
     plt.xlabel('Episode')
