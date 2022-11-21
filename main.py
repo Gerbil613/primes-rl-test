@@ -12,7 +12,7 @@ scores = {} # dict maps the hash of a state to the reward associated with it
 transition_function = None # just declare
 
 p = 1
-delta = 2
+delta = 5
 
 paths = [] # stores array of Path objects
 P_star = None
@@ -138,7 +138,7 @@ def init():
     P_star = paths[0]
     path_to_corrupt = determine_path_to_corrupt()
 
-def learn(num_episodes, gamma, epsilon, alpha, num_warm_episodes=50, attack=False, maxent=False, verbose=0, graph=False, lw=5, num_epochs=1):
+def learn(num_episodes, gamma, epsilon, alpha, num_warm_episodes=25, attack=False, maxent=False, verbose=0, graph=False, lw=5, num_epochs=1):
     '''learn(int, float, float, float, bool) -> None
     trains global variable "values" to learn Q-values of maze'''
     global visited, values, transition_function
@@ -217,6 +217,8 @@ def take_action(state, action):
     return [reward, new_state]
 
 def sample_transition_function(state, action):
+    '''sample_transition_function(arr, arr) -> arr
+    given state and action, finds new state based on transition function's probability distribution'''
     distribution = transition_function[hash(*state)][actions.index(action)]
     return unhash(np.random.choice(range(width*height), p=distribution))
   
