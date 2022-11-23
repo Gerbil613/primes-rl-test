@@ -2,7 +2,6 @@ import numpy as np
 from copy import deepcopy
 import random
 import matplotlib.pyplot as plt
-from math_functions import *
 from path import Path
 
 blocks = [] # list of invalid states (walls)
@@ -11,7 +10,9 @@ start = None # state at which we start
 scores = {} # dict maps the hash of a state to the reward associated with it
 transition_function = None # just declare
 
-p = 1
+reward_deviation = 2
+
+p = 0.5
 delta = 5
 
 paths = [] # stores array of Path objects
@@ -21,6 +22,7 @@ path_to_corrupt = None
 height, width = 0, 0
 actions = [[1,0],[0,1],[-1,0],[0,-1]] # action space (usually is subset of this b/c walls)
 values = None
+initial_values = None
 traversal_factors = {}
 
 def hash(a, b): # used as a hash function for states (which are represented by two independent numbers)
@@ -116,16 +118,6 @@ def preload_path_data(r, c, visited, current_path, factor):
             transition_function[hash(r,c)][actions.index(action)][hash(new_r,new_c)] = 1
             preload_path_data(new_r, new_c, visited, deepcopy(current_path), new_factor)
 
-def get_policy(values):
-    '''get_policy(arr, float) -> arr
-    outputs the agent's actual policy distribution using softmax on q-values'''
-    policy = np.zeros((height, width, 4))
-    for row in range(height):
-        for column in range(width):
-            policy[row][column] = np.exp(values[row][column]) / np.sum(np.exp(values[row][column]))
-
-    return policy
-
 def init():
     '''init() -> None
     general variable initiation and preprocessing protocol; sets up transition function, reads maze data, and stores all paths in MDP'''
@@ -138,10 +130,55 @@ def init():
     P_star = paths[0]
     path_to_corrupt = determine_path_to_corrupt()
 
-def learn(num_episodes, gamma, epsilon, alpha, num_warm_episodes=25, attack=False, maxent=False, verbose=0, graph=False, lw=5, num_epochs=1):
+def estimate_rewards(num_warm_episodes, attack):
+    '''estimate_rewards(int, bool) -> arr
+    estimates the rewards of the mdp during warm start'''
+    estimated_rewards = np.zeros((height, width, 4))
+    times_visited = np.zeros((height, width))
+    for warm_episode in range(num_warm_episodes):
+        state = start
+        while not hash(*state) in terminals:
+            action = random.choice(get_action_space(state))
+            reward, new_state = take_action(state, action)
+
+            if np.random.random() < p and attack:
+                if hash(*new_state) in path_to_corrupt and hash(*new_state) not in P_star:
+                    reward += delta
+
+                elif hash(*new_state) not in path_to_corrupt and hash(*new_state) in P_star:
+                    reward -= delta
+
+            times_visited[new_state[0]][new_state[1]] += 1
+            n = float(times_visited[new_state[0]][new_state[1]])
+            estimated_rewards[state[0]][state[1]][actions.index(action)] = reward / n + estimated_rewards[state[0]][state[1]][actions.index(action)] * (n-1)/n
+
+            state = new_state
+
+    return estimated_rewards
+
+def initialize_q_values(estimated_rewards, current_reward, r, c, visited):
+    '''initialize_q_values(arr, int, int, int, arr) -> arr
+    recursive function that, given the rewards estimated during warm start, calculates q-values based on that'''
+    global initial_values
+    visited.add(hash(r,c))
+    if hash(r,c) in terminals:
+        return [current_reward]
+
+    possibilities = []
+    for action in actions:
+        new_r, new_c = r + action[0], c + action[1]
+        new_reward = current_reward + estimated_rewards[r][c][actions.index(action)]
+        if hash(new_r, new_c) not in visited and hash(new_r, new_c) not in blocks and new_r >= 0 and new_c >= 0 and new_c < width and new_r < height:
+            x = initialize_q_values(estimated_rewards, new_reward, new_r, new_c, visited)
+            initial_values[r][c][actions.index(action)] = max(x) - current_reward
+            possibilities.extend(x)
+
+    return possibilities
+
+def learn(num_episodes, gamma, epsilon, alpha, num_warm_episodes=50, attack=False, verbose=0, graph=False, lw=5, num_epochs=1):
     '''learn(int, float, float, float, bool) -> None
     trains global variable "values" to learn Q-values of maze'''
-    global visited, values, transition_function
+    global values, transition_function, initial_values
 
     label = "Greedy Victim, " if epsilon < 1 else "Random Victim, "
     label += "Adversary Present" if attack else "No Adversary Present"
@@ -151,8 +188,11 @@ def learn(num_episodes, gamma, epsilon, alpha, num_warm_episodes=25, attack=Fals
 
     performance_history = np.zeros((num_epochs, num_episodes))
 
+    initial_values = np.zeros((height, width, 4))
+    initialize_q_values(estimate_rewards(num_warm_episodes, attack), 0, *start, set()) # initialize via warm start
+
     for epoch in range(num_epochs):
-        values = np.zeros((height, width, 4)) # intialize
+        values = deepcopy(initial_values)
         for episode in range(num_episodes):
             state = start
             if verbose == 2:
@@ -160,7 +200,8 @@ def learn(num_episodes, gamma, epsilon, alpha, num_warm_episodes=25, attack=Fals
                     print('Epoch: ' + str(epoch) + ' Episode: ' + str(episode))
 
             while not hash(*state) in terminals: # so long as we don't hit an end
-                action = best_action(state, epsilon if episode > num_warm_episodes else 1) # warm state for num_warm_episodes samples
+
+                action = best_action(state, epsilon) # warm state for num_warm_episodes samples
                 reward, new_state = take_action(state, action) # take action and observe reward, new state
 
                 if np.random.random() < p and attack:
@@ -170,7 +211,6 @@ def learn(num_episodes, gamma, epsilon, alpha, num_warm_episodes=25, attack=Fals
                     elif hash(*new_state) not in path_to_corrupt and hash(*new_state) in P_star:
                         reward -= delta
 
-                if maxent: reward = reward + entropy(get_policy(values)[state[0]][state[1]]) # maxent transformation
                 values[state[0]][state[1]][actions.index(action)] = \
                     (1-alpha) * get_value(state, action) + alpha * (reward + gamma * get_value(new_state, best_action(new_state, 0))) # fundamental bellman equation update
                 state = new_state
@@ -225,7 +265,7 @@ def sample_transition_function(state, action):
 def get_reward(new_state):
     '''get_reward(tuple) -> int
     computes and returns reward for entering new_state'''
-    return scores[hash(new_state[0],new_state[1])]
+    return np.random.normal(loc=scores[hash(new_state[0],new_state[1])], scale=reward_deviation)
 
 def get_value(state, action):
     '''get_value(tuple, tuple) -> int
