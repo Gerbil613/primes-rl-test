@@ -34,7 +34,6 @@ class MDP:
                 grid.append(line)
 
         height, width = len(grid), len(grid[0])
-        
 
         row = 0
         for line in grid:
