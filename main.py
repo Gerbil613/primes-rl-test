@@ -4,14 +4,14 @@ import matplotlib.pyplot as plt
 from path import Path
 from mdp import MDP
 
-mdp = MDP(string='mazes/testmaze.txt')
+mdp = MDP()
 path_to_corrupt = None
 
 initial_values = None
 values = None
 
 p = 1
-delta = 5
+delta = 2
 
 def determine_path_to_corrupt():
     '''determine_path_to_corrupt() -> Path
@@ -44,14 +44,7 @@ def estimate_rewards(num_warm_episodes, attack):
         state = mdp.start
         while len(mdp.get_action_space(state)) > 0:
             action = np.random.choice(mdp.get_action_space(state))
-            reward, new_state = mdp.take_action(state, action)
-
-            if np.random.random() < p and attack:
-                if new_state in path_to_corrupt and new_state not in mdp.P_star:
-                    reward += delta
-
-                elif new_state not in path_to_corrupt and new_state in mdp.P_star:
-                    reward -= delta
+            reward, new_state = mdp.take_action(state, action, attack=attack, delta=delta, p=p, path_to_corrupt=path_to_corrupt)
 
             times_visited[new_state] += 1
             n = float(times_visited[new_state])
@@ -80,13 +73,13 @@ def initialize_q_values(estimated_rewards, current_reward, state, visited):
 
     return possibilities
 
-def learn(num_episodes, gamma, epsilon, alpha, num_warm_episodes=50, attack=False, verbose=0, graph=False, lw=5, num_epochs=1):
+def learn(num_episodes, gamma, epsilon, alpha, num_warm_episodes, attack=0, verbose=1, graph=True, lw=5, num_epochs=200):
     '''learn(int, float, float, float, bool) -> None
     trains global variable "values" to learn Q-values of maze'''
     global values, initial_values
 
-    label = "Greedy Victim, " if epsilon < 1 else "Random Victim, "
-    label += "Adversary Present" if attack else "No Adversary Present"
+    label = ("Baseline Adversary, " if attack == 1 else "Dynamic Adversary, ") if attack > 0 else "No Adversary, "
+    label += "Warm Start" if num_warm_episodes > 0 else "No Warm Start"
 
     if verbose > 0:
         print("COMMENCING TRAINING PROTOCOL\nNumber of Epochs: " + str(num_epochs) + "\nNumber of Episodes per Epoch: " + str(num_episodes))
@@ -106,19 +99,11 @@ def learn(num_episodes, gamma, epsilon, alpha, num_warm_episodes=50, attack=Fals
 
             while len(mdp.get_action_space(state)) > 0: # so long as we don't hit an end
                 action = best_action(state, epsilon) # warm state for num_warm_episodes samples
-                reward, new_state = mdp.take_action(state, action) # take action and observe reward, new state
-
-                if np.random.random() < p and attack:
-                    if new_state in path_to_corrupt and new_state not in mdp.P_star:
-                        reward += delta
-
-                    elif new_state not in path_to_corrupt and new_state in mdp.P_star:
-                        reward -= delta
+                reward, new_state = mdp.take_action(state, action, attack=attack, delta=delta, p=p, path_to_corrupt=path_to_corrupt) # take action and observe reward, new state
 
                 if len(mdp.get_action_space(new_state)) > 0:
-                    values[state][action] = \
-                    (1-alpha) * values[state][action] + alpha * (reward + gamma * values[new_state][best_action(new_state, 0)]) # fundamental bellman equation update
-                
+                    values[state][action] = (1-alpha) * values[state][action] + alpha * (reward + gamma * values[new_state][best_action(new_state, 0)]) # fundamental bellman equation update
+
                 else: # q-value of next state is 0 if no actions can be taken in next_state
                     values[state][action] = \
                     (1-alpha) * values[state][action] + alpha * reward
@@ -137,7 +122,7 @@ def evaluate():
     state = mdp.start
     # simply loop and keep on using policy to progress through maze
     while len(mdp.get_action_space(state)) > 0:
-        reward, new_state = mdp.take_action(state, best_action(state, 0))
+        reward, new_state = mdp.take_action(state, best_action(state, 0), attack=0)
         performance += reward
         state = new_state
 
@@ -146,11 +131,18 @@ def evaluate():
 
 def main():
     global path_to_corrupt
+    mdp.load_maze('mazes/testmaze.txt')
+    #mdp.load_random(6)
     path_to_corrupt = determine_path_to_corrupt()
-    learn(200, 0.99, 1, 0.3, graph=True, attack=False, lw=2, num_epochs=200, verbose=1)
-    learn(200, 0.99, 0.3, 0.3, graph=True, attack=True, lw=3, num_epochs=200, verbose=1)
-    learn(200, 0.99, 0.3, 0.3, graph=True, attack=False, lw=4, num_epochs=200, verbose=1)
-    learn(200, 0.99, 1, 0.3, graph=True, attack=True, lw=5, num_epochs=200, verbose=1)
+    print(mdp.paths)
+    print(path_to_corrupt)
+    print(mdp.P_star)
+    learn(200, 0.99, 0.3, 0.3, 0, attack=0, lw=1)
+    learn(200, 0.99, 0.3, 0.3, 50, attack=0, lw=2)
+    learn(200, 0.99, 0.3, 0.3, 0, attack=1, lw=3)
+    learn(200, 0.99, 0.3, 0.3, 50, attack=1, lw=4)
+    learn(200, 0.99, 0.3, 0.3, 0, attack=0, lw=5)
+    learn(200, 0.99, 0.3, 0.3, 50, attack=2, lw=6)
 
     plt.legend(loc="lower right")
     plt.xlabel('Episode')
