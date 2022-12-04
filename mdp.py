@@ -96,15 +96,12 @@ class MDP:
                     matrix[state1][state2] = 1
                     matrix[state2][state1] = 1
 
-        self.score_means = np.zeros((num_states))
-
         # next piece of code connects everything up in matrix
         next_states = [self.start] # stack that does BFS
         unvisited = set(self.states)
         while len(next_states) > 0:
             state = next_states.pop(0)
             unvisited.remove(state)
-            self.score_means[state] = np.random.random() * 10
 
             next_states = []
             for new_state in unvisited:
@@ -114,35 +111,22 @@ class MDP:
             if len(next_states) == 0 and len(unvisited) > 0: # all remaining states are fully disconnected from the current group of states, we need to "hop" over to it
                 new_state = np.random.choice(list(unvisited))
                 matrix[state][new_state] = 1
+                matrix[new_state][state] = 1
                 next_states = [new_state]
 
         num_actions = int(np.max(np.sum(matrix, axis=0)))
         self.transition_function = np.zeros((num_states, num_actions, num_states))
+        self.actions = list(range(num_actions))
 
         # this sets up transition function
-        global_unvisited = deepcopy(list(self.states))
-        def load_transition_function(state, local_unvisited):
-            local_unvisited.remove(state)
-            global_unvisited.remove(state)
-            
+        for state1 in range(num_states):
             action = 0
-            for new_state in local_unvisited:
-                if matrix[state][new_state] == 1:
-                    if new_state in global_unvisited: # never visited this state before
-                        self.transition_function[state][action][new_state] = 1
-                        load_transition_function(new_state, deepcopy(local_unvisited))
-                        action += 1
+            for state2 in range(state1 + 1, num_states):
+                if matrix[state1][state2] == 1:
+                    self.transition_function[state1][action][state2] = 1 # only connect lower numbers to higher ones
+                    action += 1
 
-                    elif new_state not in global_unvisited: # visited this new_state in different branch
-                        self.transition_function[state][action][new_state] = 1
-                        action += 1
-
-                if action not in self.actions: self.actions.append(action)
-
-        load_transition_function(self.start, deepcopy(list(self.states)))
-        def load_paths_factors(state, unvisited, current_path, factor):
-            unvisited.remove(state)
-            self.traversal_factors[state] = factor
+        def load_paths(state, current_path):
             current_path.states.append(state)
             current_path.reward += self.score_means[state]
             num_actions = np.sum(self.transition_function[state])
@@ -150,15 +134,20 @@ class MDP:
                 self.paths.append(current_path)
                 return
 
-            new_factor = factor / float(num_actions)
-            for new_state in unvisited:
+            for new_state in self.states:
                 for action in self.actions:
                     if self.transition_function[state][action][new_state] == 1: # we can get to new state
-                        load_paths_factors(new_state, unvisited, current_path, new_factor)
+                        load_paths(new_state, deepcopy(current_path))
 
-        load_paths_factors(self.start, deepcopy(list(self.states)), Path([], 0), 1)
+        load_paths(self.start, Path([], 0))
         self.paths.sort(reverse=True) # best is first
         self.P_star = self.paths[0]
+        self.load_traversal_factors()
+
+        # now we generate rewards WORK IN PROGRESS
+        path_rewards = np.random.normal(size=len(self.paths), loc=6, scale=1)
+        current_path_rewards = np.zeros((len(self.paths)))
+        self.score_means = [None] * len(self.states)
 
     def load_traversal_factors(self):
         '''MDP.load_traversal_factors() -> None
@@ -167,14 +156,14 @@ class MDP:
         for state in self.states:
             for path in self.paths:
                 if state in path.states:
-                    self.traversal_factors[state] += 1 / float(len(self.paths))
+                    self.traversal_factors[state] += 1
 
-    def take_action(self, state, action, attack=0, delta=0, p=0, path_to_corrupt=None):
-        '''MDP.take_action(state, action, int, float, path) -> real number, state
+    def take_action(self, state, action):
+        '''MDP.take_action(state, action) -> real number, state
         inputs current state and action to take, and outputs new state and reward acquired in the process
         this is transitions dynamic function'''
         new_state = self.sample_transition_function(state, action)
-        reward = self.sample_reward_function(state, action, attack=attack, delta=delta, p=p, path_to_corrupt=path_to_corrupt)
+        reward = self.sample_reward_function(new_state)
         return [reward, new_state]
 
     def sample_transition_function(self, state, action):
@@ -183,21 +172,11 @@ class MDP:
         distribution = self.transition_function[state][action]
         return np.random.choice(self.states, p=distribution)
 
-    def sample_reward_function(self, state, action, attack=0, delta=0, p=0, path_to_corrupt=None):
-        '''MDP.sample_reward_function(state, action, int, float, path) -> real number
+    def sample_reward_function(self, new_state):
+        '''MDP.sample_reward_function(state, int, float, path, path, bool) -> real number
         given state and action, samples reward function'''
-        new_state = self.sample_transition_function(state, action)
         reward = self.score_means[new_state]
-        if attack == 0: return reward
-        if attack == 1 and np.random.random() < p: return np.random.normal(loc=reward, scale=1)
-        if attack == 2 and np.random.random() < p:
-            if new_state in path_to_corrupt and new_state not in self.P_star:
-                reward += delta
-
-            elif new_state not in path_to_corrupt and new_state in self.P_star:
-                reward -= delta
-
-            return reward
+        return reward
 
     def get_action_space(self, state):
         '''MDP.get_action_space(state) -> arr of actions
