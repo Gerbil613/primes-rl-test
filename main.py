@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from path import Path
 from mdp import MDP
 import math
+from collections import Counter
 
 mdp = MDP()
 path_to_corrupt = None
@@ -52,7 +53,7 @@ def determine_path_to_corrupt():
 
     return P_p
 
-def learn(epsilon, num_warm_episodes=50, attack=0, verbose=1, graph=True, lw=5, num_epochs=500, num_episodes=200):
+def learn(epsilon, num_warm_episodes=50, attack=0, verbose=1, graph=True, lw=5, num_epochs=5000, num_episodes=200, objective_evaluation=True):
     '''learn(float, bool) -> None
     trains global variable "values" to learn Q-values of maze'''
     global estimations, initial_estimations
@@ -62,7 +63,8 @@ def learn(epsilon, num_warm_episodes=50, attack=0, verbose=1, graph=True, lw=5, 
     elif attack == 1: label += "Attack A, "
     elif attack == 2: label += "Attack B, "
     elif attack == 3: label += "Dynamic Adversary, "
-    label += "Warm Start" if num_warm_episodes > 0 else "No Warm Start"
+    label += "Warm Start, " if num_warm_episodes > 0 else "No Warm Start, "
+    label += "Objective Evaluation" if objective_evaluation else "Victim's Perspective"
 
     if verbose > 0:
         print("COMMENCING TRAINING PROTOCOL\nNumber of Epochs: " + str(num_epochs) + "\nNumber of Episodes per Epoch: " + str(num_episodes))
@@ -119,15 +121,25 @@ def learn(epsilon, num_warm_episodes=50, attack=0, verbose=1, graph=True, lw=5, 
             assert differential <= delta
 
             if graph:
-                performance_history[epoch][episode - num_warm_episodes] = evaluate(estimations)
+                performance_history[epoch][episode - num_warm_episodes] = evaluate(estimations) if objective_evaluation else corrupted_evaluate(estimations)
 
     if graph:
         plt.plot(range(num_episodes), np.average(performance_history, axis=0), label=label, alpha=0.5, lw=lw)
 
 def evaluate(estimations):
     '''evaluate() -> int
-    evaluates the global var "values" according to a deterministic (non-epsilon) greedy policy'''
+    evaluates reward estimations in unperturbed test-time setting'''
     return best_path(0, estimations).reward
+
+def corrupted_evaluate(estimations):
+    '''evaluate() -> int
+    evaluates estimations from victim's corrupted perspective'''
+    path = best_path(0, estimations)
+    output = 0
+    for state in path.states:
+        output += estimations[state]
+
+    return output
 
 def best_path(epsilon, estimations):
     '''best_path(int, arr) -> path
@@ -161,7 +173,7 @@ def main():
     print('Number of paths:', len(mdp.paths))
     print('Path to switch:', path_to_corrupt)
     print('Optimal path:', mdp.P_star)
-    attack = 1
+    attack = 3
     learn(0.3, 0, attack=attack, lw=1)
     learn(0.3, 50, attack=attack, lw=2)
     learn(1, 0, attack=attack, lw=3)
