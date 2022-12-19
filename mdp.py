@@ -1,6 +1,7 @@
 import numpy as np
 from path import Path
 from copy import deepcopy
+import pickle
 
 class MDP:
     '''generalized MDP object
@@ -8,11 +9,12 @@ class MDP:
     terminals are INCLUSIVE; is a subset of state space
     states and actions are just indices, whereas state_space and action_space are the actual states and actions'''
     start = None
-    score_means = []
-    traversal_factors = {}
+    rewards = []
+    traversal_factors = None
     paths = []
     P_star = None
     transition_function = None
+    visited = set()
     
     states = []
     actions = []
@@ -31,6 +33,7 @@ class MDP:
                 grid.append(line)
 
         height, width = len(grid), len(grid[0])
+        self.raw_scores = [] # this stores rewards with respect to new_state; will be reprocessed later to be in state, new_state format
 
         row = 0
         for line in grid:
@@ -42,29 +45,24 @@ class MDP:
                     self.start = id
                     self.state_space.append([row, column]) # add actual state to state space
                     self.states.append(id) # add state index as well
-                    self.score_means.append(0) # no reward for start state itself
+                    self.raw_scores.append(0) # no reward for start state itself
 
                 elif item.isdigit(): # regular state
                     self.state_space.append([row, column])
                     self.states.append(id)
-                    self.score_means.append(int(item))
+                    self.raw_scores.append(int(item))
                 
                 column += 1
             row += 1
 
         self.transition_function = np.zeros((len(self.states), 4, len(self.states)))
+        self.rewards = np.zeros((len(self.states), len(self.states)))
 
-        def recursive_maze_load(self, state, visited, current_path, width, height):
-            '''MDP.recursive_maze_load(state, set, arr, int) -> None
-            a) recursively finds every path in maze and stores each one's constituent states and total reward sum
-            b) calculates and stores traversal factor of every node
-            c) sets up transition function'''
+        def load_maze_tf(self, state, visited, width, height):
+            '''load_maze_tf(state, set, int) -> None
+            sets up transition funciton and loads paths and traversal factors'''
             visited.add(state)
 
-            current_path.states.append(state) # add current state to path
-            current_path.reward += self.score_means[state] # add reward to running total
-
-            is_terminal = True
             for action in self.action_space: # try each action and see which next states we can go to according to TF
                 r, c = self.state_space[state]
                 try: new_state =  self.state_space.index([r + action[0], c + action[1]])
@@ -72,98 +70,82 @@ class MDP:
 
                 if new_state not in visited:
                     self.transition_function[state][self.action_space.index(action)][new_state] = 1
-                    is_terminal = False
-                    recursive_maze_load(self, new_state, visited, deepcopy(current_path), width, height)
+                    self.rewards[state, new_state] = self.raw_scores[new_state] # reprocess to be in right format
+                    load_maze_tf(self, new_state, visited, width, height)
 
-            if is_terminal:
-                self.paths.append(current_path)
-                return
-
-        recursive_maze_load(self, self.start, set(), Path([], 0), width, height) # set up TF etc. for maze
+        load_maze_tf(self, self.start, set(), width, height) # set up TF etc. for maze
+        self.load_paths(self.start, Path([], 0))
         self.paths.sort(reverse=True) # best is first
         self.P_star = self.paths[0]
         self.load_traversal_factors()
 
-    def load_random(self, num_states, p_edge=0.5):
+    def load_random(self, num_states, p_edge=.4):
         '''MDP.load_random(int) -> None
         loads random MDP with specified number of states'''
         self.states = range(num_states)
         self.start = 0
-        matrix = np.zeros((num_states, num_states))
-        for state1 in range(num_states):
-            for state2 in range(state1+1, num_states):
-                if np.random.random() < p_edge:
-                    matrix[state1][state2] = 1
-                    matrix[state2][state1] = 1
+        while True:
+            self.visited = set()
+            self.paths = []
+            self.rewards = np.zeros((num_states, num_states))
+            num_actions = 0
+            self.transition_function = np.zeros((num_states, num_states - 1, num_states))
+            for state1 in range(num_states):
+                action = 0
+                for state2 in range(state1+1, num_states):
+                    if np.random.random() < p_edge:
+                        self.rewards[state1, state2] = np.random.random() * 10 - 5
+                        self.transition_function[state1][deepcopy(action)][state2] = 1
+                        action += 1
 
-        # next piece of code connects everything up in matrix
-        next_states = [self.start] # stack that does BFS
-        unvisited = set(self.states)
-        while len(next_states) > 0:
-            state = next_states.pop(0)
-            unvisited.remove(state)
+                num_actions = max(action, num_actions)
 
-            next_states = []
-            for new_state in unvisited:
-                if matrix[state][new_state] == 1: # there is an edge connecting these two states
-                    next_states.append(new_state)
-
-            if len(next_states) == 0 and len(unvisited) > 0: # all remaining states are fully disconnected from the current group of states, we need to "hop" over to it
-                new_state = np.random.choice(list(unvisited))
-                matrix[state][new_state] = 1
-                matrix[new_state][state] = 1
-                next_states = [new_state]
-
-        num_actions = int(np.max(np.sum(matrix, axis=0)))
-        self.transition_function = np.zeros((num_states, num_actions, num_states))
-        self.actions = list(range(num_actions))
-
-        # this sets up transition function
-        for state1 in range(num_states):
-            action = 0
-            for state2 in range(state1 + 1, num_states):
-                if matrix[state1][state2] == 1:
-                    self.transition_function[state1][action][state2] = 1 # only connect lower numbers to higher ones
-                    action += 1
-
-        def load_paths(state, current_path):
-            current_path.states.append(state)
-            current_path.reward += self.score_means[state]
-            num_actions = np.sum(self.transition_function[state])
-            if num_actions == 0:
-                self.paths.append(current_path)
-                return
-
-            for new_state in self.states:
-                for action in self.actions:
-                    if self.transition_function[state][action][new_state] == 1: # we can get to new state
-                        load_paths(new_state, deepcopy(current_path))
-
-        load_paths(self.start, Path([], 0))
+            # now we test to make sure that graph is fully connected
+            self.transition_function = np.delete(self.transition_function, np.s_[num_actions:], axis=1) # truncate transition function based on how many actions there are
+            self.actions = list(range(num_actions))
+            self.load_paths(self.start, Path([], 0))
+            if len(self.visited) == num_states: break
+        
         self.paths.sort(reverse=True) # best is first
         self.P_star = self.paths[0]
-        self.load_traversal_factors()
+        self.load_traversal_factors()        
 
-        # now we generate rewards WORK IN PROGRESS
-        path_rewards = np.random.normal(size=len(self.paths), loc=6, scale=1)
-        current_path_rewards = np.zeros((len(self.paths)))
-        self.score_means = [None] * len(self.states)
+    def load_paths(self, state, current_path, prev_state=-1):
+        '''MDP.load_paths(state, path, prev_state) -> None
+        loads paths in MDP based on TF'''
+        current_path.states.append(state)
+        self.visited.add(state)
+        if prev_state != -1: current_path.reward += self.rewards[prev_state, state]
+        num_actions = np.sum(self.transition_function[state])
+        if num_actions == 0:
+            current_path.id = len(self.paths)
+            self.paths.append(current_path)
+            return
+
+        for new_state in self.states:
+            for action in self.actions:
+                if self.transition_function[state][action][new_state] == 1: # we can get to new state
+                    self.load_paths(new_state, deepcopy(current_path), prev_state=state)
 
     def load_traversal_factors(self):
         '''MDP.load_traversal_factors() -> None
         once MDP is set up, calculates and stores traversal factors'''
-        self.traversal_factors = np.zeros((len(self.states)))
-        for state in self.states:
-            for path in self.paths:
-                if state in path.states:
-                    self.traversal_factors[state] += 1
+        self.traversal_factors = np.zeros((len(self.states), len(self.states)))
+        for state1 in self.states:
+            for state2 in self.states:
+                if not self.transition_function[state1, :, state2].any(): continue
+            
+                edge = (state1, state2)
+                for path in self.paths:
+                    if edge in path:
+                        self.traversal_factors[state1, state2] += 1
 
     def take_action(self, state, action):
         '''MDP.take_action(state, action) -> real number, state
         inputs current state and action to take, and outputs new state and reward acquired in the process
         this is transitions dynamic function'''
         new_state = self.sample_transition_function(state, action)
-        reward = self.sample_reward_function(new_state)
+        reward = self.sample_reward_function(state, new_state)
         return [reward, new_state]
 
     def sample_transition_function(self, state, action):
@@ -172,10 +154,10 @@ class MDP:
         distribution = self.transition_function[state][action]
         return np.random.choice(self.states, p=distribution)
 
-    def sample_reward_function(self, new_state):
-        '''MDP.sample_reward_function(state, int, float, path, path, bool) -> real number
+    def sample_reward_function(self, state, new_state):
+        '''MDP.sample_reward_function(state, new_state) -> real number
         given state and action, samples reward function'''
-        reward = self.score_means[new_state]
+        reward = self.rewards[state, new_state]
         return reward
 
     def get_action_space(self, state):
