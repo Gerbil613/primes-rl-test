@@ -73,7 +73,7 @@ def determine_corruption_algorithm():
                 corruption_algorithm[path.id, edge[0], edge[1]] = delta
                 break
 
-def learn(epsilon, num_warm_episodes=50, attack=0, verbose=1, graph=True, lw=5, num_epochs=500, num_episodes=200, objective_evaluation=True):
+def learn(epsilon, num_warm_episodes=50, attack=0, verbose=1, graph=True, lw=5, num_epochs=1000, num_episodes=200, objective_evaluation=True):
     '''learn(float, bool) -> None
     trains global variable "values" to learn Q-values of maze'''
     global estimations
@@ -88,6 +88,7 @@ def learn(epsilon, num_warm_episodes=50, attack=0, verbose=1, graph=True, lw=5, 
 
     if verbose > 0:
         print("COMMENCING TRAINING PROTOCOL\nNumber of Epochs: " + str(num_epochs) + "\nNumber of Episodes per Epoch: " + str(num_episodes))
+        print(label)
 
     performance_history = np.zeros((num_epochs, num_episodes))
 
@@ -97,6 +98,7 @@ def learn(epsilon, num_warm_episodes=50, attack=0, verbose=1, graph=True, lw=5, 
 
         for episode in range(num_episodes + num_warm_episodes):
             path = best_path(epsilon if episode >= num_warm_episodes else 1, estimations)
+
             can_attack = np.random.random() <= p
             differential = 0
             state = mdp.start
