@@ -4,13 +4,16 @@ import matplotlib.pyplot as plt
 from path import Path
 from mdp import MDP
 import math
-import pickle
+import time
+import colorsys
 
 mdp = MDP()
 path_to_corrupt = None
 corruption_algorithm = None
 
 estimations = None
+
+num_corrupted_a, num_corrupted_b = 0, 0
 
 p = 1
 delta = 2
@@ -51,26 +54,34 @@ def determine_path_to_corrupt():
 def determine_corruption_algorithm():
     '''determine_corruption_algorithm() -> dict
     determines which edge to corrupt for each path in the dynamic adversarial algorithm'''
-    global corruption_algorithm
+    global corruption_algorithm, num_corrupted_a, num_corrupted_b
     corruption_algorithm = np.zeros((len(mdp.paths), len(mdp.states), len(mdp.states))) # specify path and edge
     for path in mdp.paths:
         for edge in path:
             if path.id == mdp.P_star.id:
                 if mdp.traversal_factors[edge] == 1: # corrupt optimal path down
                     corruption_algorithm[path.id, edge[0], edge[1]] = -delta
+                    if edge in mdp.P_star: num_corrupted_a += 1
+                    elif edge in path_to_corrupt: num_corrupted_b += 1
                     break
 
             elif path.id == path_to_corrupt.id:
                 if mdp.traversal_factors[edge] == 1: # corrupt path to switch up
                     corruption_algorithm[path.id, edge[0], edge[1]] = delta
+                    if edge in mdp.P_star: num_corrupted_a += 1
+                    elif edge in path_to_corrupt: num_corrupted_b += 1
                     break
             
             elif edge in mdp.P_star and edge not in path_to_corrupt: # free corruption
-                    corruption_algorithm[path.id, edge[0], edge[1]] = -delta
-                    break
+                corruption_algorithm[path.id, edge[0], edge[1]] = -delta
+                if edge in mdp.P_star: num_corrupted_a += 1
+                elif edge in path_to_corrupt: num_corrupted_b += 1
+                break
 
             elif edge in path_to_corrupt and edge not in mdp.P_star: # free corruption
                 corruption_algorithm[path.id, edge[0], edge[1]] = delta
+                if edge in mdp.P_star: num_corrupted_a += 1
+                elif edge in path_to_corrupt: num_corrupted_b += 1
                 break
 
 def learn(epsilon, num_warm_episodes=50, attack=0, verbose=1, graph=True, lw=5, num_epochs=1000, num_episodes=200, objective_evaluation=True):
@@ -173,14 +184,44 @@ def best_path(epsilon, estimations):
     return np.random.choice(best_paths)
 
 def main():
-    global path_to_corrupt
+    global path_to_corrupt, num_corrupted_a, num_corrupted_b
     #mdp.load_maze('mazes/testmaze.txt')
-    np.random.seed(0)
-    mdp.load_random(5)
-    path_to_corrupt = determine_path_to_corrupt()
-    determine_corruption_algorithm()
-    print(corruption_algorithm)
-    print('Number of paths:', len(mdp.paths))
+    #np.random.seed(0)
+    t = time.time()
+    num_mdps = 10000
+    data_x, data_y = [], []
+    freq_map = {}
+    for i in range(num_mdps):
+        if i % 1000 == 0: print(i)
+        num_corrupted_a, num_corrupted_b = 0, 0
+        mdp.load_random(10)
+        path_to_corrupt = determine_path_to_corrupt()
+        determine_corruption_algorithm()
+
+        x, y = num_corrupted_b, num_corrupted_a
+        if (x,y) not in freq_map:
+            data_x.append(x)
+            data_y.append(y)
+            freq_map[(x,y)] = 1
+
+        freq_map[(x,y)] += 1
+        #print(corruption_algorithm)
+
+    data_x, data_y = np.array(data_x), np.array(data_y)
+    print(time.time() - t)
+    max_freq = max(freq_map.values())
+    color_map = np.zeros((len(data_x), 3))
+    for i, x in enumerate(data_x):
+        y = data_y[i]
+        freq = freq_map[(x, y)]
+        strength = freq / float(max_freq)
+        color_map[i] = np.array(colorsys.hsv_to_rgb((1-strength) * 0.7, strength**0.3, 1))
+
+    plt.scatter(data_x, data_y, c=color_map, s=25)
+    plt.xlabel('Number of corrupted edges in path being switched')
+    plt.ylabel('Number of corrupted edges in optimal path')
+    plt.show()
+    '''print('Number of paths:', len(mdp.paths))
     print('Path to switch:', path_to_corrupt)
     print('Optimal path:', mdp.P_star)
     print('Number of actions: ' + str(len(mdp.actions)))
@@ -195,7 +236,7 @@ def main():
     plt.legend(loc="lower right")
     plt.xlabel('Episode')
     plt.ylabel('Performance (Final Reward)')
-    plt.show()
+    plt.show()'''
 
 if __name__ == '__main__':
     main()
