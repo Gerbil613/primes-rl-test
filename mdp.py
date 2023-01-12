@@ -94,7 +94,7 @@ class MDP:
                 action = 0
                 for state2 in range(state1+1, num_states):
                     if np.random.random() < p_edge:
-                        self.rewards[state1, state2] = np.random.random() * 10 - 5
+                        self.rewards[state1, state2] = np.random.random() * 2 - 1
                         self.transition_function[state1][deepcopy(action)][state2] = 1
                         action += 1
 
@@ -169,4 +169,9 @@ class MDP:
                 output.append(action)
 
         return output
+
+    def get_average_depth(self):
+        '''MDP.get_average_depth() -> float
+        outputs mean depth over all paths in MDP'''
+        return np.average([len(path.states) for path in self.paths])
 

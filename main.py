@@ -1,6 +1,14 @@
+'''
+TODO
+1. what percentage of mdps can retain the corruption (vary p-factor) 
+2. try to get stupid, 1-phase recursive adversary thing that switches once more past warm start
+3. make warm start corruption algorithm smarter (don't switch with path unless it will be higher than paths in between)
+'''
+
 import numpy as np
 from copy import deepcopy
 import matplotlib.pyplot as plt
+import matplotlib.colors as clrs
 from path import Path
 from mdp import MDP
 import math
@@ -54,7 +62,7 @@ def determine_path_to_corrupt():
 def determine_corruption_algorithm():
     '''determine_corruption_algorithm() -> dict
     determines which edge to corrupt for each path in the dynamic adversarial algorithm'''
-    global corruption_algorithm, num_corrupted_a, num_corrupted_b
+    global corruption_algorithm, num_corrupted_a, num_corrupted_b, path_to_corrupt
     corruption_algorithm = np.zeros((len(mdp.paths), len(mdp.states), len(mdp.states))) # specify path and edge
     for path in mdp.paths:
         for edge in path:
@@ -133,17 +141,19 @@ def learn(epsilon, num_warm_episodes=50, attack=0, verbose=1, graph=True, lw=5, 
                     reward += corruption_algorithm[path.id, edge[0], edge[1]]
                 
                 differential += abs(reward - original_reward)
+
                 n = float(times_visited[state, new_state])
                 estimations[state, new_state] = reward / n + estimations[state, new_state] * (n-1)/n
                 state = new_state
+            
+            assert differential - delta <= 0.0001 # not quite 0 cuz floating point errors
 
-            assert differential <= delta
-
-            if graph:
-                performance_history[epoch][episode - num_warm_episodes] = evaluate(estimations) if objective_evaluation else corrupted_evaluate(estimations)
+            performance_history[epoch][episode - num_warm_episodes] = evaluate(estimations) if objective_evaluation else corrupted_evaluate(estimations)
 
     if graph:
         plt.plot(range(num_episodes), np.average(performance_history, axis=0), label=label, alpha=0.5, lw=lw)
+
+    return performance_history # return average performance in every last episode
 
 def evaluate(estimations):
     '''evaluate() -> int
@@ -184,59 +194,34 @@ def best_path(epsilon, estimations):
     return np.random.choice(best_paths)
 
 def main():
-    global path_to_corrupt, num_corrupted_a, num_corrupted_b
-    #mdp.load_maze('mazes/testmaze.txt')
-    #np.random.seed(0)
-    t = time.time()
-    num_mdps = 10000
+    global mdp, path_to_corrupt
+    num_steps = 40
+    num_mdps_per_step = 100
+    num_epochs = 10
     data_x, data_y = [], []
-    freq_map = {}
-    for i in range(num_mdps):
-        if i % 1000 == 0: print(i)
-        num_corrupted_a, num_corrupted_b = 0, 0
-        mdp.load_random(10)
-        path_to_corrupt = determine_path_to_corrupt()
-        determine_corruption_algorithm()
+    for i in range(num_steps):
+        print(i)
+        p_edge = 0.1 + float(i) / num_steps * 0.9
+        step_y = []
+        for j in range(num_mdps_per_step):
+            mdp.load_random(5, p_edge=p_edge)
+            path_to_corrupt = determine_path_to_corrupt()
+            while path_to_corrupt.id == mdp.P_star.id:
+                mdp.load_random(5, p_edge=p_edge)
+                path_to_corrupt = determine_path_to_corrupt()
 
-        x, y = num_corrupted_b, num_corrupted_a
-        if (x,y) not in freq_map:
-            data_x.append(x)
-            data_y.append(y)
-            freq_map[(x,y)] = 1
+            determine_corruption_algorithm()
+            #result = learn(0.1, num_warm_episodes=50, attack=3, verbose=0, graph=False, num_epochs=num_epochs, num_episodes=200)[:, -1]
+            #data_y.append(np.average(result - path_to_corrupt.reward))
+            step_y.append(mdp.get_average_depth())
+        
+        data_y.append(np.average(step_y))
+        data_x.append(p)
 
-        freq_map[(x,y)] += 1
-        #print(corruption_algorithm)
-
-    data_x, data_y = np.array(data_x), np.array(data_y)
-    print(time.time() - t)
-    max_freq = max(freq_map.values())
-    color_map = np.zeros((len(data_x), 3))
-    for i, x in enumerate(data_x):
-        y = data_y[i]
-        freq = freq_map[(x, y)]
-        strength = freq / float(max_freq)
-        color_map[i] = np.array(colorsys.hsv_to_rgb((1-strength) * 0.7, strength**0.3, 1))
-
-    plt.scatter(data_x, data_y, c=color_map, s=25)
-    plt.xlabel('Number of corrupted edges in path being switched')
-    plt.ylabel('Number of corrupted edges in optimal path')
+    plt.xlabel("Probability of edge")
+    plt.ylabel("Average depth")
+    plt.plot(data_x, data_y)
     plt.show()
-    '''print('Number of paths:', len(mdp.paths))
-    print('Path to switch:', path_to_corrupt)
-    print('Optimal path:', mdp.P_star)
-    print('Number of actions: ' + str(len(mdp.actions)))
-    print('Score means:\n' + str(mdp.rewards))
-    if input('Commence training? (y/n) ') == 'n': quit()
-    attack = 3
-    learn(0.3, 0, attack=attack, lw=1)
-    learn(0.3, 50, attack=attack, lw=2)
-    learn(1, 0, attack=attack, lw=3)
-    learn(1, 50, attack=attack, lw=4)
-
-    plt.legend(loc="lower right")
-    plt.xlabel('Episode')
-    plt.ylabel('Performance (Final Reward)')
-    plt.show()'''
 
 if __name__ == '__main__':
     main()
