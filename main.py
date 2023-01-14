@@ -216,10 +216,12 @@ def main():
             step_y.append(mdp.get_average_depth())
         
         data_y.append(np.average(step_y))
-        data_x.append(p)
+        data_x.append(p_edge)
 
     plt.xlabel("Probability of edge")
     plt.ylabel("Average depth")
+    print(data_x)
+    print(data_y)
     plt.plot(data_x, data_y)
     plt.show()
 
