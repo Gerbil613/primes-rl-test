@@ -79,7 +79,7 @@ class MDP:
         self.P_star = self.paths[0]
         self.load_traversal_factors()
 
-    def load_random(self, num_states, p_edge=.4):
+    def load_random(self, num_states, p_edge=.55, max_edge_reward=1):
         '''MDP.load_random(int) -> None
         loads random MDP with specified number of states'''
         self.states = range(num_states)
@@ -94,7 +94,7 @@ class MDP:
                 action = 0
                 for state2 in range(state1+1, num_states):
                     if np.random.random() < p_edge:
-                        self.rewards[state1, state2] = np.random.random() * 2 - 1
+                        self.rewards[state1, state2] = np.random.random() * 2 * max_edge_reward - max_edge_reward
                         self.transition_function[state1][deepcopy(action)][state2] = 1
                         action += 1
 
@@ -104,10 +104,11 @@ class MDP:
             self.transition_function = np.delete(self.transition_function, np.s_[num_actions:], axis=1) # truncate transition function based on how many actions there are
             self.actions = list(range(num_actions))
             self.load_paths(self.start, Path([], 0))
-            if len(self.visited) == num_states: break
+            if len(self.visited) == num_states and len(self.paths) > 1: break
         
         self.paths.sort(reverse=True) # best is first
         self.P_star = self.paths[0]
+        for id in range(len(self.paths)): self.paths[id].id = id
         self.load_traversal_factors()        
 
     def load_paths(self, state, current_path, prev_state=-1):
@@ -118,7 +119,6 @@ class MDP:
         if prev_state != -1: current_path.reward += self.rewards[prev_state, state]
         num_actions = np.sum(self.transition_function[state])
         if num_actions == 0:
-            current_path.id = len(self.paths)
             self.paths.append(current_path)
             return
 
