@@ -2,11 +2,9 @@ import numpy as np
 from copy import deepcopy
 import matplotlib.pyplot as plt
 from matplotlib import cm
-from path import Path
 from mdp import MDP
+import seaborn as sns
 import math
-import time
-import colorsys
 
 mdp = MDP()
 path_to_corrupt = None
@@ -28,66 +26,39 @@ def sample_truncanted_normal(mean, std, bound, precision=50):
 
     return np.random.choice(x, p=y)
 
-def determine_path_to_corrupt(free_corruption=True):
-    '''determine_path_to_corrupt() -> Path
-    outputs path in MDP that is best for adversary to corrupt'''
+def determine_path_to_corrupt():
+    '''determine_path_to_corrupt() -> array, Path
+    outputs path in MDP that is best for adversary to corrupt
+    TODO: assumes no in-between paths'''
     P_p = mdp.P_star
-    test_corruption_algorithm = np.zeros((len(mdp.paths), len(mdp.states), len(mdp.states)))
+    test_corruption_algorithm = np.zeros((len(mdp.paths), mdp.transition_function.shape[0], len(mdp.states)))
     for P_i in mdp.paths: # don't iterate over best path
-        if P_i.reward == mdp.P_star.reward: continue
-        '''b_i = 2
-        for P_j in mdp.paths:
-            if P_j.reward == P_i.reward or P_j.reward == mdp.P_star.reward: continue
+        if P_i.id == mdp.P_star.id: continue
 
-            opt = 99999
-            for edge in P_j:
-                if (edge in P_i) != (edge in mdp.P_star) and mdp.traversal_factors[edge[0]][edge[1]] < opt:
-                    opt = mdp.traversal_factors[edge[0]][edge[1]]
-            
-            b_i += 1/opt'''
-
-        result = determine_corruption_algorithm(P_i, free_corruption=free_corruption)
-        if result[0] and P_i.reward < P_p.reward: # result[0] makes sure we surpass the in-between paths; is crucial
-            test_corruption_algorithm = result[1]
+        result, budget = test_path(P_i)
+        if P_i.reward < P_p.reward and mdp.P_star.reward - budget*p*delta < P_i.reward:
+            test_corruption_algorithm = result
             P_p = P_i
 
-        '''if P_i.reward < P_p.reward and mdp.P_star.reward - b_i*p*delta < P_i.reward and P_i.reward + BLAH > mdp.paths[1].reward:
-            P_p = P_i'''
+    return deepcopy(test_corruption_algorithm), P_p
 
-    return P_p, deepcopy(test_corruption_algorithm)
-
-def determine_corruption_algorithm(test_path_to_corrupt, free_corruption=True):
-    '''determine_corruption_algorithm(path) -> np.array
-    determines which edge to corrupt for each path in the dynamic adversarial algorithm'''
-    test_corruption_algorithm = np.zeros((len(mdp.paths), len(mdp.states), len(mdp.states))) # specify path and edge
-    budget_calculation = np.zeros((len(mdp.states), len(mdp.states)))
+def test_path(test_path_to_corrupt):
+    '''test_path(path) -> array, float
+    determines which edge to corrupt for each path in the dynamic adversarial algorithm, in order to switch inputted path'''
+    test_corruption_algorithm = np.zeros((len(mdp.paths), int(mdp.transition_function.shape[0]), len(mdp.states))) # specify path and edge
+    budget = 0
     for path in mdp.paths:
+        opt = -1
+        opt_edge = -1
         for edge in path:
-            if path.id == mdp.P_star.id:
-                if mdp.traversal_factors[edge] == 1: # corrupt optimal path down
-                    test_corruption_algorithm[path.id, edge[0], edge[1]] = -delta
-                    budget_calculation[edge[0], edge[1]] = -p*delta
-                    break
+            if (edge in test_path_to_corrupt) != (edge in mdp.P_star) and (opt == -1 or mdp.traversal_factors[edge[0]][edge[1]] < opt):
+                opt = mdp.traversal_factors[edge[0]][edge[1]]
+                opt_edge = edge
 
-            elif path.id == test_path_to_corrupt.id:
-                if mdp.traversal_factors[edge] == 1: # corrupt path to switch up
-                    test_corruption_algorithm[path.id, edge[0], edge[1]] = delta
-                    budget_calculation[edge[0], edge[1]] = p*delta
-                    break
-            
-            elif edge in mdp.P_star and edge not in test_path_to_corrupt and free_corruption: # free corruption
-                test_corruption_algorithm[path.id, edge[0], edge[1]] = -delta
-                budget_calculation[edge[0], edge[1]] = -p*delta / mdp.traversal_factors[edge]
-                break
-
-            elif edge in test_path_to_corrupt and edge not in mdp.P_star and free_corruption: # free corruption
-                test_corruption_algorithm[path.id, edge[0], edge[1]] = delta
-                budget_calculation[edge[0], edge[1]] = p*delta / mdp.traversal_factors[edge]
-                break
+        budget += 1.0 / opt if opt != -1 else 0
+        if opt_edge != -1: test_corruption_algorithm[path.id][opt_edge[0]][opt_edge[1]] = delta if opt_edge in test_path_to_corrupt else -delta
     
-    path_increments = [np.sum([budget_calculation[edge] for edge in path]) for path in mdp.paths]
-    corrupted_path_rewards = np.array([p.reward for p in mdp.paths]) + np.array(path_increments)
-    return np.argmax(corrupted_path_rewards) == test_path_to_corrupt.id, test_corruption_algorithm
+    return test_corruption_algorithm, budget
 
 def learn(epsilon, num_warm_episodes=50, attack=0, verbose=1, lw=5, num_epochs=1000, num_greedy_episodes=200, objective_evaluation=True):
     '''learn(float, bool) -> None
@@ -189,42 +160,42 @@ def best_path(epsilon, estimations):
 def main():
     # 3 independent variables - number of states, density, reward ratio
     global mdp, path_to_corrupt, corruption_algorithm
-    num_steps = 20
-    num_mdps_per_step = 2000
-    x, y, z_four, z_five, z_six, z_seven = [], [], np.zeros((num_steps, num_steps)), np.zeros((num_steps, num_steps)), np.zeros((num_steps, num_steps)), np.zeros((num_steps, num_steps))
-    for i in range(num_steps):
-        print(i)
-        p_edge = 0.7*float(i) / num_steps + 0.3 # density
-        x.append(p_edge)
-        for j in range(num_steps):
-            ratio = 10**(2*float(j) / (num_steps - 1) - 1)
-            if i == 0: y.append(ratio)
-            numerator, denominator = np.zeros((8)), np.zeros((8))
-            for k in range(num_mdps_per_step):
-                if k < num_mdps_per_step/4.0: num_states = 4
-                elif k < num_mdps_per_step/2.0: num_states = 5
-                elif k < 3*num_mdps_per_step/4.0: num_states = 6
-                else: num_states = 7
-                mdp.load_random(num_states, max_edge_reward=ratio*p*delta, p_edge=p_edge)
-                path_to_corrupt_no_free, corruption_algorithm = determine_path_to_corrupt(free_corruption=0)
-                path_to_corrupt_with_free, corruption_algorithm = determine_path_to_corrupt(free_corruption=1)
-                if path_to_corrupt_with_free.id != mdp.P_star.id: denominator[num_states] += 1
-                if path_to_corrupt_with_free.id != mdp.P_star.id and path_to_corrupt_with_free.id == path_to_corrupt_no_free.id: numerator[num_states] += 1
+    num_mdps_per_step = 300
+    num_steps = 15
+    data = np.zeros((num_steps, num_steps))
+    x, y = [], []
+    for density_step in range(num_steps):
+        print(density_step)
+        density = 0.5 + 0.5 * float(density_step) / (num_steps - 1)
+        y.append(str(density)[:4])
+        for ratio_step in range(num_steps):
+            ratio = 10**(2*float(ratio_step) / (num_steps - 1) - 1)
+            if density_step == 0: x.append(str(ratio)[:4])
+            numerator, denominator = 0, 0 # numerator is the percent of time in-between paths exist
+            for i in range(num_mdps_per_step):
+                mdp.load_random(8, p_edge=density, max_edge_reward=ratio*p*delta, assure_unique_edges=True)
+                corruption_algorithm, path_to_corrupt = determine_path_to_corrupt()
+                
+                #result = learn(0.1, num_warm_episodes=100, attack=3, num_epochs=1, num_greedy_episodes=0, verbose=0)
+                edge_perturbations = np.sum(corruption_algorithm, axis=0) / mdp.traversal_factors
+                perturbed_path_rewards = [p.reward for p in mdp.paths]
+                for m in range(len(mdp.paths)):
+                    for edge in mdp.paths[m]:
+                        perturbed_path_rewards[m] += edge_perturbations[edge]
 
-            z_four[j][i] = float(numerator[4]) / denominator[4]
-            z_five[j][i] = float(numerator[5]) / denominator[5]
-            z_six[j][i] = float(numerator[6]) / denominator[6]
-            z_seven[j][i] = float(numerator[7]) / denominator[7]
+                numerator += np.argmax(perturbed_path_rewards) != path_to_corrupt.id
+                '''if abs(np.average(result) - path_to_corrupt.reward) > 0.001:
+                    numerator += 1'''
 
-    ax = plt.axes(projection='3d')
-    x, y = np.meshgrid(x, y)
-    ax.plot_surface(x, np.log10(y), z_four, cmap='Purples', linewidth=0, antialiased=False, label='4 States')
-    ax.plot_surface(x, np.log10(y), z_five, cmap='Greens', linewidth=0, antialiased=False, label='5 States')
-    ax.plot_surface(x, np.log10(y), z_six, cmap='Oranges', linewidth=0, antialiased=False, label='6 States')
-    ax.plot_surface(x, np.log10(y), z_seven, cmap='Reds', linewidth=0, antialiased=False, label='7 States')
-    ax.set_xlabel('Density')
-    ax.set_ylabel('Ratio of max reward to pdelta')
-    ax.set_zlabel("Percentage of time when allowing free corruption doesn't make a difference")
+                denominator += 1
+
+            data[density_step][ratio_step] = float(numerator) / denominator
+
+    sns.heatmap(data, annot=True)
+    plt.xticks(range(len(x)), x)
+    plt.yticks(range(len(y)), y)
+    plt.xlabel('Ratio of max edge reward to pdelta')
+    plt.ylabel('Density')
     plt.show()
 
 if __name__ == '__main__':

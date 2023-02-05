@@ -74,15 +74,15 @@ class MDP:
                     load_maze_tf(self, new_state, visited, width, height)
 
         load_maze_tf(self, self.start, set(), width, height) # set up TF etc. for maze
-        self.load_paths(self.start, Path([], 0))
+        self.load_paths(self.start, Path([], 0), guarantee_unique_edges=False)
         self.paths.sort(reverse=True) # best is first
         self.P_star = self.paths[0]
         self.load_traversal_factors()
 
-    def load_random(self, num_states, p_edge=.55, max_edge_reward=1):
+    def load_random(self, num_states, p_edge=.55, max_edge_reward=1, assure_unique_edges=True):
         '''MDP.load_random(int) -> None
         loads random MDP with specified number of states'''
-        self.states = range(num_states)
+        self.states = list(range(num_states))
         self.start = 0
         while True:
             self.visited = set()
@@ -104,12 +104,13 @@ class MDP:
             self.transition_function = np.delete(self.transition_function, np.s_[num_actions:], axis=1) # truncate transition function based on how many actions there are
             self.actions = list(range(num_actions))
             self.load_paths(self.start, Path([], 0))
-            if len(self.visited) == num_states and len(self.paths) > 1: break
+            if len(self.visited) == len(self.states) and len(self.paths) > 1: break
         
         self.paths.sort(reverse=True) # best is first
         self.P_star = self.paths[0]
         for id in range(len(self.paths)): self.paths[id].id = id
-        self.load_traversal_factors()        
+        self.load_traversal_factors()
+        if assure_unique_edges: self.assure_unique_edges(max_edge_reward)
 
     def load_paths(self, state, current_path, prev_state=-1):
         '''MDP.load_paths(state, path, prev_state) -> None
@@ -139,6 +140,29 @@ class MDP:
                 for path in self.paths:
                     if edge in path:
                         self.traversal_factors[state1, state2] += 1
+
+    def assure_unique_edges(self, max_edge_reward):
+        '''MDP.assure_unique_edges(float) -> None
+        assures that every path in the MDP has an edge unique to that path'''
+        for path in self.paths:
+            has_unique_edge = False
+            for edge in path:
+                if self.traversal_factors[edge] == 1: has_unique_edge = True
+            
+            if not has_unique_edge:
+                tip_state = len(self.states)
+                self.states.append(tip_state)
+
+                self.rewards = np.append(self.rewards, np.zeros((len(self.rewards), 1)), axis=1) # lengthen reward function for tip states
+                reward = np.random.random() * 2 * max_edge_reward - max_edge_reward
+                self.rewards[path.states[-2], tip_state] = reward # -2 because -1 is the tip_state itself, since we added it already
+
+                self.transition_function = np.append(self.transition_function, np.zeros((len(self.transition_function), len(self.transition_function[0]), 1)), axis=2)
+                self.transition_function[path.states[-2], 0, tip_state] = 1
+                path.add(tip_state, reward)
+
+                self.traversal_factors = np.append(self.traversal_factors, np.zeros((len(self.traversal_factors), 1)), axis=1)
+                self.traversal_factors[path.states[-2], tip_state] = 1 # unique
 
     def take_action(self, state, action):
         '''MDP.take_action(state, action) -> real number, state
@@ -174,4 +198,10 @@ class MDP:
         '''MDP.get_average_depth() -> float
         outputs mean depth over all paths in MDP'''
         return np.average([len(path.states) for path in self.paths])
+
+    def __str__(self):
+        '''str(MDP) -> str
+        Outputs a string representation of the MDP'''
+        return 'Number of States: ' + str(len(self.states)) + '\nNumber of actions: ' + str(len(self.actions)) \
+        + '\nPaths: ' + str([str(path) for path in self.paths]) + '\nTransition function:\n' + str(self.transition_function) + '\nReward function:\n' + str(self.rewards)
 
