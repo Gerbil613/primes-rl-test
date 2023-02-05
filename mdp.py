@@ -74,8 +74,9 @@ class MDP:
                     load_maze_tf(self, new_state, visited, width, height)
 
         load_maze_tf(self, self.start, set(), width, height) # set up TF etc. for maze
-        self.load_paths(self.start, Path([], 0), guarantee_unique_edges=False)
+        self.load_paths(self.start, Path([], 0))
         self.paths.sort(reverse=True) # best is first
+        for id in range(len(self.paths)): self.paths[id].id = id
         self.P_star = self.paths[0]
         self.load_traversal_factors()
 

@@ -173,11 +173,12 @@ def main():
             if density_step == 0: x.append(str(ratio)[:4])
             numerator, denominator = 0, 0 # numerator is the percent of time in-between paths exist
             for i in range(num_mdps_per_step):
-                mdp.load_random(8, p_edge=density, max_edge_reward=ratio*p*delta, assure_unique_edges=True)
+                mdp.load_random(5, p_edge=density, max_edge_reward=ratio*p*delta, assure_unique_edges=True)
                 corruption_algorithm, path_to_corrupt = determine_path_to_corrupt()
                 
                 #result = learn(0.1, num_warm_episodes=100, attack=3, num_epochs=1, num_greedy_episodes=0, verbose=0)
-                edge_perturbations = np.sum(corruption_algorithm, axis=0) / mdp.traversal_factors
+                divisor = mdp.traversal_factors + np.equal(mdp.traversal_factors, 0) # convert all 0s to one to stop division error
+                edge_perturbations = np.sum(corruption_algorithm, axis=0) / divisor
                 perturbed_path_rewards = [p.reward for p in mdp.paths]
                 for m in range(len(mdp.paths)):
                     for edge in mdp.paths[m]:
