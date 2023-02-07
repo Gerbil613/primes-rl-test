@@ -80,9 +80,9 @@ class MDP:
         self.P_star = self.paths[0]
         self.load_traversal_factors()
 
-    def load_random(self, num_states, p_edge=.55, max_edge_reward=1, assure_unique_edges=True):
-        '''MDP.load_random(int) -> None
-        loads random MDP with specified number of states'''
+    def load_random_dag(self, num_states, p_edge=.55, reward_variance=1, assure_unique_edges=True):
+        '''MDP.load_random_dag(int) -> None
+        loads random DAG MDP with specified number of states'''
         self.states = list(range(num_states))
         self.start = 0
         while True:
@@ -95,7 +95,7 @@ class MDP:
                 action = 0
                 for state2 in range(state1+1, num_states):
                     if np.random.random() < p_edge:
-                        self.rewards[state1, state2] = np.random.random() * 2 * max_edge_reward - max_edge_reward
+                        self.rewards[state1, state2] = np.random.normal(loc=0, scale=reward_variance)
                         self.transition_function[state1][deepcopy(action)][state2] = 1
                         action += 1
 
@@ -111,7 +111,11 @@ class MDP:
         self.P_star = self.paths[0]
         for id in range(len(self.paths)): self.paths[id].id = id
         self.load_traversal_factors()
-        if assure_unique_edges: self.assure_unique_edges(max_edge_reward)
+        if assure_unique_edges: self.assure_unique_edges(reward_variance)
+
+    def load_random_layered(num_layers, mean_nodes_per_layer, mean_outgoing_edges, reward_variance):
+        '''MDP.load_random_layered(int, float, float, float)
+        load randomly generated layered MDP, which is a subset of DAG'''
 
     def load_paths(self, state, current_path, prev_state=-1):
         '''MDP.load_paths(state, path, prev_state) -> None
@@ -142,7 +146,7 @@ class MDP:
                     if edge in path:
                         self.traversal_factors[state1, state2] += 1
 
-    def assure_unique_edges(self, max_edge_reward):
+    def assure_unique_edges(self, reward_variance):
         '''MDP.assure_unique_edges(float) -> None
         assures that every path in the MDP has an edge unique to that path'''
         for path in self.paths:
@@ -155,7 +159,7 @@ class MDP:
                 self.states.append(tip_state)
 
                 self.rewards = np.append(self.rewards, np.zeros((len(self.rewards), 1)), axis=1) # lengthen reward function for tip states
-                reward = np.random.random() * 2 * max_edge_reward - max_edge_reward
+                reward = np.random.normal(loc=0, scale=reward_variance)
                 self.rewards[path.states[-2], tip_state] = reward # -2 because -1 is the tip_state itself, since we added it already
 
                 self.transition_function = np.append(self.transition_function, np.zeros((len(self.transition_function), len(self.transition_function[0]), 1)), axis=2)

@@ -160,7 +160,7 @@ def best_path(epsilon, estimations):
 def main():
     # 3 independent variables - number of states, density, reward ratio
     global mdp, path_to_corrupt, corruption_algorithm
-    num_mdps_per_step = 300
+    num_mdps_per_step = 1000
     num_steps = 15
     data = np.zeros((num_steps, num_steps))
     x, y = [], []
@@ -173,7 +173,7 @@ def main():
             if density_step == 0: x.append(str(ratio)[:4])
             numerator, denominator = 0, 0 # numerator is the percent of time in-between paths exist
             for i in range(num_mdps_per_step):
-                mdp.load_random(5, p_edge=density, max_edge_reward=ratio*p*delta, assure_unique_edges=True)
+                mdp.load_random_dag(5, p_edge=density, reward_variance=ratio*p*delta, assure_unique_edges=True)
                 corruption_algorithm, path_to_corrupt = determine_path_to_corrupt()
                 
                 #result = learn(0.1, num_warm_episodes=100, attack=3, num_epochs=1, num_greedy_episodes=0, verbose=0)
@@ -195,7 +195,7 @@ def main():
     sns.heatmap(data, annot=True)
     plt.xticks(range(len(x)), x)
     plt.yticks(range(len(y)), y)
-    plt.xlabel('Ratio of max edge reward to pdelta')
+    plt.xlabel('Ratio of edge reward variance to pdelta')
     plt.ylabel('Density')
     plt.show()
 
