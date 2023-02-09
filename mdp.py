@@ -80,7 +80,7 @@ class MDP:
         self.P_star = self.paths[0]
         self.load_traversal_factors()
 
-    def load_random_dag(self, num_states, p_edge=.55, reward_variance=1, assure_unique_edges=True):
+    def load_random_dag(self, num_states, p_edge=.55, reward_std=1, assure_unique_edges=True):
         '''MDP.load_random_dag(int) -> None
         loads random DAG MDP with specified number of states'''
         self.states = list(range(num_states))
@@ -95,7 +95,7 @@ class MDP:
                 action = 0
                 for state2 in range(state1+1, num_states):
                     if np.random.random() < p_edge:
-                        self.rewards[state1, state2] = np.random.normal(loc=0, scale=reward_variance)
+                        self.rewards[state1, state2] = np.random.normal(loc=0, scale=reward_std)
                         self.transition_function[state1][deepcopy(action)][state2] = 1
                         action += 1
 
@@ -111,11 +111,61 @@ class MDP:
         self.P_star = self.paths[0]
         for id in range(len(self.paths)): self.paths[id].id = id
         self.load_traversal_factors()
-        if assure_unique_edges: self.assure_unique_edges(reward_variance)
+        if assure_unique_edges: self.assure_unique_edges(reward_std)
 
-    def load_random_layered(num_layers, mean_nodes_per_layer, mean_outgoing_edges, reward_variance):
-        '''MDP.load_random_layered(int, float, float, float)
+    def load_random_layered(self, num_layers, mean_nodes_per_layer, mean_degree, reward_std, assure_unique_edges=True):
+        '''MDP.load_random_layered(int, int, int, float)
         load randomly generated layered MDP, which is a subset of DAG'''
+        self.start = 0
+        if mean_nodes_per_layer < mean_degree: raise ValueError('Mean degree cannot be greater than mean number of nodes per layer.')
+        min_num_nodes_per_layer = mean_degree
+        max_num_nodes_per_layer = 2*mean_nodes_per_layer - mean_degree
+        node_counts = np.random.randint(min_num_nodes_per_layer, max_num_nodes_per_layer + 1, size=num_layers) # +1 cuz exclusive
+        node_counts[0] = 1 # there is one start node in the first layer
+        num_states = np.sum(node_counts)
+        current_state = 0
+        structure = []
+        for node_count in node_counts:
+            current_arr = []
+            for i in range(node_count):
+                current_arr.append(current_state)
+                current_state += 1
+
+            structure.append(current_arr)
+
+        assert current_state == num_states
+
+        self.states = list(range(num_states))
+        self.visited = set()
+        self.paths = []
+        self.rewards = np.zeros((num_states, num_states))
+        num_actions = 0
+        self.transition_function = np.zeros((num_states, num_states - 1, num_states))
+        for layer_index in range(num_layers - 1):
+            # connnect from layer_index to layer_index + 1
+            while True:
+                connected = set()
+                for state in structure[layer_index]:
+                    action = 0
+                    for new_state in structure[layer_index + 1]:
+                        probability = float(mean_degree) / mean_nodes_per_layer
+                        if np.random.random() < probability:
+                            connected.add(new_state)
+                            self.transition_function[state][action][new_state] = 1
+                            self.rewards[state][new_state] = np.random.normal(loc=0, scale=reward_std)
+                            action += 1
+                            num_actions = max(num_actions, action)
+
+                if len(connected) == node_counts[layer_index + 1]: break # keep going till next layer is fully connected
+
+        self.transition_function = np.delete(self.transition_function, np.s_[num_actions:], axis=1) # truncate transition function based on how many actions there are
+        self.actions = list(range(num_actions))
+        self.load_paths(self.start, Path([], 0))        
+        self.paths.sort(reverse=True) # best is first
+        self.P_star = self.paths[0]
+        for id in range(len(self.paths)): self.paths[id].id = id
+        self.load_traversal_factors()
+        if assure_unique_edges: self.assure_unique_edges(reward_std)
 
     def load_paths(self, state, current_path, prev_state=-1):
         '''MDP.load_paths(state, path, prev_state) -> None
@@ -146,7 +196,7 @@ class MDP:
                     if edge in path:
                         self.traversal_factors[state1, state2] += 1
 
-    def assure_unique_edges(self, reward_variance):
+    def assure_unique_edges(self, reward_std):
         '''MDP.assure_unique_edges(float) -> None
         assures that every path in the MDP has an edge unique to that path'''
         for path in self.paths:
@@ -159,7 +209,7 @@ class MDP:
                 self.states.append(tip_state)
 
                 self.rewards = np.append(self.rewards, np.zeros((len(self.rewards), 1)), axis=1) # lengthen reward function for tip states
-                reward = np.random.normal(loc=0, scale=reward_variance)
+                reward = np.random.normal(loc=0, scale=reward_std)
                 self.rewards[path.states[-2], tip_state] = reward # -2 because -1 is the tip_state itself, since we added it already
 
                 self.transition_function = np.append(self.transition_function, np.zeros((len(self.transition_function), len(self.transition_function[0]), 1)), axis=2)

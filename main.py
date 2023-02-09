@@ -5,6 +5,7 @@ from matplotlib import cm
 from mdp import MDP
 import seaborn as sns
 import math
+from tqdm import tqdm
 
 mdp = MDP()
 path_to_corrupt = None
@@ -160,20 +161,23 @@ def best_path(epsilon, estimations):
 def main():
     # 3 independent variables - number of states, density, reward ratio
     global mdp, path_to_corrupt, corruption_algorithm
-    num_mdps_per_step = 1000
-    num_steps = 15
+    num_mdps_per_step = 100
+    num_layers = 3
+    mean_nodes_per_layer = 8
+    num_steps = int(mean_nodes_per_layer / 2) + 1
     data = np.zeros((num_steps, num_steps))
     x, y = [], []
     for density_step in range(num_steps):
-        print(density_step)
-        density = 0.5 + 0.5 * float(density_step) / (num_steps - 1)
-        y.append(str(density)[:4])
+        mean_degree = mean_nodes_per_layer - num_steps + density_step + 1
+        print('Mean degree: ', mean_degree)
+        y.append(str(mean_degree)[:4])
         for ratio_step in range(num_steps):
             ratio = 10**(2*float(ratio_step) / (num_steps - 1) - 1)
+            print('Ratio: ', ratio)
             if density_step == 0: x.append(str(ratio)[:4])
             numerator, denominator = 0, 0 # numerator is the percent of time in-between paths exist
-            for i in range(num_mdps_per_step):
-                mdp.load_random_dag(5, p_edge=density, reward_variance=ratio*p*delta, assure_unique_edges=True)
+            for i in tqdm(range(num_mdps_per_step)):
+                mdp.load_random_layered(num_layers, mean_nodes_per_layer, mean_degree, ratio*p*delta)
                 corruption_algorithm, path_to_corrupt = determine_path_to_corrupt()
                 
                 #result = learn(0.1, num_warm_episodes=100, attack=3, num_epochs=1, num_greedy_episodes=0, verbose=0)
@@ -195,8 +199,8 @@ def main():
     sns.heatmap(data, annot=True)
     plt.xticks(range(len(x)), x)
     plt.yticks(range(len(y)), y)
-    plt.xlabel('Ratio of edge reward variance to pdelta')
-    plt.ylabel('Density')
+    plt.xlabel('Ratio of edge reward standard deviation to pdelta')
+    plt.ylabel('Mean edge degree')
     plt.show()
 
 if __name__ == '__main__':
