@@ -158,12 +158,39 @@ def best_path(epsilon, estimations):
     
     return np.random.choice(best_paths)
 
+def average_traversal_factors(num_layers):
+    '''average traversal_factors(int) -> arr
+    outputs the average traversal factor of every edge, for each layer'''
+    numerator, denominator = [0.0] * (num_layers - 1), [0.0] * (num_layers - 1)
+    queue = [(mdp.start, 0, -1)]
+    visited = set()
+    while len(queue) > 0:
+        current_state, current_depth, previous_state = queue.pop(0)
+        visited.add(current_state)
+
+        if current_state != 0:
+            numerator[current_depth - 1] += float(mdp.traversal_factors[previous_state, current_state])
+            denominator[current_depth - 1] += 1.0
+
+        if current_state >= mdp.traversal_factors.shape[0]: continue # one of the states added to preserve edge uniqueness; it has no neighbors ofc
+
+        neighbors_mask = np.sum(mdp.transition_function[current_state], axis=0) # axis is 0 not 1 cuz we have already selected out the first axis
+        for next_state in mdp.states:
+            if neighbors_mask[next_state] == 1:
+                queue.append((next_state, current_depth + 1, current_state))        
+
+    print(visited)
+    print(len(mdp.states))
+    print(numerator)
+    print(denominator)
+    return np.array(numerator) / np.array(denominator)
+
 def main():
     # 3 independent variables - number of states, density, reward ratio
     global mdp, path_to_corrupt, corruption_algorithm
     num_mdps_per_step = 100
-    num_layers = 3
-    mean_nodes_per_layer = 8
+    num_layers = 5
+    mean_nodes_per_layer = 4
     num_steps = int(mean_nodes_per_layer / 2) + 1
     data = np.zeros((num_steps, num_steps))
     x, y = [], []
@@ -171,35 +198,23 @@ def main():
         mean_degree = mean_nodes_per_layer - num_steps + density_step + 1
         print('Mean degree: ', mean_degree)
         y.append(str(mean_degree)[:4])
-        for ratio_step in range(num_steps):
-            ratio = 10**(2*float(ratio_step) / (num_steps - 1) - 1)
-            print('Ratio: ', ratio)
-            if density_step == 0: x.append(str(ratio)[:4])
+        for depth_step in range(num_layers):
+            print('Depth:', depth_step)
+            if density_step == 0: x.append(depth_step)
             numerator, denominator = 0, 0 # numerator is the percent of time in-between paths exist
-            for i in tqdm(range(num_mdps_per_step)):
-                mdp.load_random_layered(num_layers, mean_nodes_per_layer, mean_degree, ratio*p*delta)
-                corruption_algorithm, path_to_corrupt = determine_path_to_corrupt()
-                
-                #result = learn(0.1, num_warm_episodes=100, attack=3, num_epochs=1, num_greedy_episodes=0, verbose=0)
-                divisor = mdp.traversal_factors + np.equal(mdp.traversal_factors, 0) # convert all 0s to one to stop division error
-                edge_perturbations = np.sum(corruption_algorithm, axis=0) / divisor
-                perturbed_path_rewards = [p.reward for p in mdp.paths]
-                for m in range(len(mdp.paths)):
-                    for edge in mdp.paths[m]:
-                        perturbed_path_rewards[m] += edge_perturbations[edge]
-
-                numerator += np.argmax(perturbed_path_rewards) != path_to_corrupt.id
-                '''if abs(np.average(result) - path_to_corrupt.reward) > 0.001:
-                    numerator += 1'''
-
+            for i in range(num_mdps_per_step):
+                mdp.load_random_layered(num_layers, mean_nodes_per_layer, mean_degree, 1*p*delta, assure_unique_edges=False)
+                print(average_traversal_factors(num_layers))
+                quit()
+                numerator += average_traversal_factor(num_layers, depth_step)
                 denominator += 1
 
-            data[density_step][ratio_step] = float(numerator) / denominator
+            data[density_step][depth_step] = float(numerator) / denominator
 
     sns.heatmap(data, annot=True)
     plt.xticks(range(len(x)), x)
     plt.yticks(range(len(y)), y)
-    plt.xlabel('Ratio of edge reward standard deviation to pdelta')
+    plt.xlabel('Depth')
     plt.ylabel('Mean edge degree')
     plt.show()
 

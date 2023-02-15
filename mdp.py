@@ -114,7 +114,7 @@ class MDP:
         if assure_unique_edges: self.assure_unique_edges(reward_std)
 
     def load_random_layered(self, num_layers, mean_nodes_per_layer, mean_degree, reward_std, assure_unique_edges=True):
-        '''MDP.load_random_layered(int, int, int, float)
+        '''MDP.load_random_layered(int, int, int, float, bool=True)
         load randomly generated layered MDP, which is a subset of DAG'''
         self.start = 0
         if mean_nodes_per_layer < mean_degree: raise ValueError('Mean degree cannot be greater than mean number of nodes per layer.')
@@ -143,20 +143,29 @@ class MDP:
         self.transition_function = np.zeros((num_states, num_states - 1, num_states))
         for layer_index in range(num_layers - 1):
             # connnect from layer_index to layer_index + 1
-            while True:
+            while True: # TODO THIS IS TOTALLY WRONG you need to reset TF in every iteration of the while loop
                 connected = set()
+                edges_drawn = set()
                 for state in structure[layer_index]:
                     action = 0
                     for new_state in structure[layer_index + 1]:
                         probability = float(mean_degree) / mean_nodes_per_layer
                         if np.random.random() < probability:
                             connected.add(new_state)
-                            self.transition_function[state][action][new_state] = 1
+                            edges_drawn.add((state, new_state))
+                            self.transition_function[state][deepcopy(action)][deepcopy(new_state)] = 1
                             self.rewards[state][new_state] = np.random.normal(loc=0, scale=reward_std)
                             action += 1
                             num_actions = max(num_actions, action)
 
-                if len(connected) == node_counts[layer_index + 1]: break # keep going till next layer is fully connected
+                if len(connected) == len(structure[layer_index + 1]):
+                    break # keep going till next layer is fully connected
+                
+                else:
+                    for edge in edges_drawn: # reset TF and rewards!
+                        state, new_state = edge
+                        self.transition_function[state, :, new_state] = np.zeros((num_states - 1,))
+                        self.rewards[state][new_state] = 0
 
         self.transition_function = np.delete(self.transition_function, np.s_[num_actions:], axis=1) # truncate transition function based on how many actions there are
         self.actions = list(range(num_actions))
