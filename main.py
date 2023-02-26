@@ -179,37 +179,32 @@ def average_traversal_factors(num_layers):
             if neighbors_mask[next_state] == 1:
                 queue.append((next_state, current_depth + 1, current_state))        
 
-    print(visited)
-    print(len(mdp.states))
-    print(numerator)
-    print(denominator)
     return np.array(numerator) / np.array(denominator)
 
 def main():
     # 3 independent variables - number of states, density, reward ratio
     global mdp, path_to_corrupt, corruption_algorithm
-    num_mdps_per_step = 100
-    num_layers = 5
-    mean_nodes_per_layer = 4
+    num_mdps_per_step = 50
+    num_layers = 4
+    mean_nodes_per_layer = 5
     num_steps = int(mean_nodes_per_layer / 2) + 1
-    data = np.zeros((num_steps, num_steps))
+    data = np.zeros((num_steps, num_layers - 1))
     x, y = [], []
     for density_step in range(num_steps):
         mean_degree = mean_nodes_per_layer - num_steps + density_step + 1
-        print('Mean degree: ', mean_degree)
+        print('Mean degree:', mean_degree)
         y.append(str(mean_degree)[:4])
-        for depth_step in range(num_layers):
-            print('Depth:', depth_step)
-            if density_step == 0: x.append(depth_step)
-            numerator, denominator = 0, 0 # numerator is the percent of time in-between paths exist
-            for i in range(num_mdps_per_step):
-                mdp.load_random_layered(num_layers, mean_nodes_per_layer, mean_degree, 1*p*delta, assure_unique_edges=False)
-                print(average_traversal_factors(num_layers))
-                quit()
-                numerator += average_traversal_factor(num_layers, depth_step)
-                denominator += 1
+        numerator, denominator = [0] * (num_layers - 1), 0 # numerator is the percent of time in-between paths exist
+        for i in range(num_mdps_per_step):
+            print(i)
+            mdp.load_random_layered(num_layers, mean_nodes_per_layer, mean_degree, 1*p*delta, assure_unique_edges=False)
+            print(average_traversal_factors(num_layers))
+            print(mdp)
+            quit()
+            numerator += average_traversal_factors(num_layers)
+            denominator += 1
 
-            data[density_step][depth_step] = float(numerator) / denominator
+        data[density_step] = numerator / denominator
 
     sns.heatmap(data, annot=True)
     plt.xticks(range(len(x)), x)
