@@ -35,7 +35,7 @@ def get_observed_path_rewards(test_corruption_algorithm):
     for i in range(len(mdp.paths)):
         path = mdp.paths[i]
         for edge in path:
-            observed_rewards[i] += mdp.rewards[edge[0], edge[1]] + test_corruption_algorithm[path.id, edge[0], edge[1]]
+            observed_rewards[i] += mdp.rewards[edge[0], edge[1]] + p * np.average(test_corruption_algorithm[:, edge[0], edge[1]])
 
     return observed_rewards
 
@@ -43,6 +43,7 @@ def alicia_heuristic():
     '''alicia_heuristic() -> None
     implements alicia's heuristic version of algorithm 2 to deal with in-between paths'''
     global corruption_algorithm, path_to_corrupt, mdp
+    corruption_algorithm = np.zeros((len(mdp.paths), len(mdp.states), len(mdp.states)))
     path_to_corrupt = mdp.P_star
     for P_p in mdp.paths: # P_p is tested for corruption
         test_corruption_algorithm = np.zeros((len(mdp.paths), len(mdp.states), len(mdp.states)))
@@ -71,9 +72,10 @@ def alicia_heuristic():
             corruption_algorithm = deepcopy(test_corruption_algorithm)
 
 def algorithm2():
-    '''algorithm2() -> array, Path
-    outputs path in MDP that is best for adversary to corrupt
+    '''algorithm2() -> None
+    computes path in MDP that is best for adversary to corrupt and sets global variables
     Implements Algorithm 2'''
+    global corruption_algorithm, path_to_corrupt, mdp
     P_p = mdp.P_star
     test_corruption_algorithm = np.zeros((len(mdp.paths), mdp.transition_function.shape[0], len(mdp.states)))
     for P_i in mdp.paths: # don't iterate over best path
@@ -84,11 +86,13 @@ def algorithm2():
             test_corruption_algorithm = result
             P_p = P_i
 
-    return deepcopy(test_corruption_algorithm), P_p
+    corruption_algorithm = deepcopy(test_corruption_algorithm)
+    path_to_corrupt = deepcopy(P_p)
 
 def test_path(test_path_to_corrupt):
     '''test_path(path) -> array, float
-    determines which edge to corrupt for each path in the dynamic adversarial algorithm, in order to switch inputted path'''
+    determines which edge to corrupt for each path in the dynamic adversarial algorithm, in order to switch inputted path
+    helper function for algorithm2'''
     test_corruption_algorithm = np.zeros((len(mdp.paths), int(mdp.transition_function.shape[0]), len(mdp.states))) # specify path and edge
     budget = 0
     for path in mdp.paths:
@@ -205,8 +209,7 @@ def main():
     # 3 independent variables - number of states, density, reward ratio
     global mdp, path_to_corrupt, corruption_algorithm
     num_mdps_per_step = 200
-    mean_nodes_per_layer = 4
-    np.random.seed(1)
+    mean_nodes_per_layer = 6
     num_steps = int(mean_nodes_per_layer / 2) + 1
     data = np.zeros((num_steps, num_steps))
     x, y = [], []
@@ -221,9 +224,13 @@ def main():
             if density_step == 0: x.append(num_layers)
             for i in tqdm(range(num_mdps_per_step)):
                 mdp.load_random_layered(num_layers, mean_nodes_per_layer, mean_degree, 1*p*delta, assure_unique_edges=True)
-                corruption_algorithm = np.zeros((len(mdp.paths), len(mdp.states), len(mdp.states)))
                 alicia_heuristic()
-                numerator += float(path_to_corrupt.id) / len(mdp.paths)
+                heuristic_result = path_to_corrupt.reward
+
+                algorithm2()
+                alg2_result = path_to_corrupt.reward
+
+                numerator += heuristic_result / float(alg2_result)
                 denominator += 1
 
             data[density_step][depth_step] = float(numerator) / denominator
@@ -232,7 +239,7 @@ def main():
     sns.heatmap(data, annot=True)
     plt.xticks(range(len(x)), x)
     plt.yticks(range(len(y)), y)
-    plt.title('Rate of incidence of corruption being possible')
+    plt.title('Performance comparison ratio between Heuristic and Algorithm 2')
     plt.xlabel('Number of layers')
     plt.ylabel('Mean edge degree (density)')
     plt.show()
