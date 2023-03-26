@@ -15,6 +15,7 @@ class MDP:
     P_star = None
     transition_function = None
     visited = set()
+    unique_edges = [] # list which maps a path to the edge unique to it
     
     states = []
     actions = []
@@ -116,7 +117,10 @@ class MDP:
     def load_random_layered(self, num_layers, mean_nodes_per_layer, mean_degree, reward_std, assure_unique_edges=True):
         '''MDP.load_random_layered(int, int, int, float, bool=True)
         load randomly generated layered MDP, which is a subset of DAG'''
+        self.states = []
+        self.actions = []
         self.start = 0
+        self.num_layers = num_layers
         if mean_nodes_per_layer < mean_degree: raise ValueError('Mean degree cannot be greater than mean number of nodes per layer.')
         min_num_nodes_per_layer = mean_degree
         max_num_nodes_per_layer = 2*mean_nodes_per_layer - mean_degree
@@ -143,7 +147,7 @@ class MDP:
         self.transition_function = np.zeros((num_states, num_states - 1, num_states))
         for layer_index in range(num_layers - 1):
             # connnect from layer_index to layer_index + 1
-            while True: # TODO THIS IS TOTALLY WRONG you need to reset TF in every iteration of the while loop
+            while True:
                 connected = set()
                 edges_drawn = set()
                 for state in structure[layer_index]:
@@ -208,10 +212,13 @@ class MDP:
     def assure_unique_edges(self, reward_std):
         '''MDP.assure_unique_edges(float) -> None
         assures that every path in the MDP has an edge unique to that path'''
+        self.unique_edges = [None] * len(self.paths)
         for path in self.paths:
             has_unique_edge = False
             for edge in path:
-                if self.traversal_factors[edge] == 1: has_unique_edge = True
+                if self.traversal_factors[edge] == 1:
+                    self.unique_edges[path.id] = edge
+                    has_unique_edge = True
             
             if not has_unique_edge:
                 tip_state = len(self.states)
@@ -227,6 +234,8 @@ class MDP:
 
                 self.traversal_factors = np.append(self.traversal_factors, np.zeros((len(self.traversal_factors), 1)), axis=1)
                 self.traversal_factors[path.states[-2], tip_state] = 1 # unique
+
+                self.unique_edges[path.id] = [path.states[-2], tip_state]
 
     def take_action(self, state, action):
         '''MDP.take_action(state, action) -> real number, state

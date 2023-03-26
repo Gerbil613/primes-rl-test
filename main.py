@@ -27,10 +27,53 @@ def sample_truncanted_normal(mean, std, bound, precision=50):
 
     return np.random.choice(x, p=y)
 
-def determine_path_to_corrupt():
-    '''determine_path_to_corrupt() -> array, Path
+def get_observed_path_rewards(test_corruption_algorithm):
+    '''get_observed_path_rewards(arr) -> Path
+    outputs list of Path objects whose rewards are augmented by coruption_algorithm'''
+    global mdp
+    observed_rewards = [0] * len(mdp.paths)
+    for i in range(len(mdp.paths)):
+        path = mdp.paths[i]
+        for edge in path:
+            observed_rewards[i] += mdp.rewards[edge[0], edge[1]] + test_corruption_algorithm[path.id, edge[0], edge[1]]
+
+    return observed_rewards
+
+def alicia_heuristic():
+    '''alicia_heuristic() -> None
+    implements alicia's heuristic version of algorithm 2 to deal with in-between paths'''
+    global corruption_algorithm, path_to_corrupt, mdp
+    path_to_corrupt = mdp.P_star
+    for P_p in mdp.paths: # P_p is tested for corruption
+        test_corruption_algorithm = np.zeros((len(mdp.paths), len(mdp.states), len(mdp.states)))
+        unique_edge = mdp.unique_edges[P_p.id]
+        test_corruption_algorithm[P_p.id][unique_edge[0]][unique_edge[1]] = delta
+        for interceding_path_index in range(len(mdp.paths) - 1, P_p.id, -1): # loop thru best to worst paths, trying to bring down each as conservatively as possible
+            interceding_path = mdp.paths[interceding_path_index]
+
+            observed_path_rewards = get_observed_path_rewards(test_corruption_algorithm)
+            if observed_path_rewards[interceding_path.id] < observed_path_rewards[P_p.id]:
+                break
+
+            for free_corruption_path in mdp.paths: # loop thru all paths to get free corruption to bring down interceding path
+                if np.sum(test_corruption_algorithm[free_corruption_path.id]) != 0: continue # already corrupted on this path, don't mess with it
+                for edge in free_corruption_path:
+                    if edge in interceding_path and edge not in P_p:
+                        test_corruption_algorithm[free_corruption_path.id][edge[0]][edge[1]] = -delta
+                        break
+
+                observed_path_rewards = get_observed_path_rewards(test_corruption_algorithm)
+                if observed_path_rewards[interceding_path.id] < observed_path_rewards[P_p.id]:
+                    break
+                
+        if np.argmax(get_observed_path_rewards(test_corruption_algorithm)) == P_p.id and path_to_corrupt.reward > P_p.reward:
+            path_to_corrupt = deepcopy(P_p)
+            corruption_algorithm = deepcopy(test_corruption_algorithm)
+
+def algorithm2():
+    '''algorithm2() -> array, Path
     outputs path in MDP that is best for adversary to corrupt
-    TODO: assumes no in-between paths'''
+    Implements Algorithm 2'''
     P_p = mdp.P_star
     test_corruption_algorithm = np.zeros((len(mdp.paths), mdp.transition_function.shape[0], len(mdp.states)))
     for P_i in mdp.paths: # don't iterate over best path
@@ -158,59 +201,40 @@ def best_path(epsilon, estimations):
     
     return np.random.choice(best_paths)
 
-def average_traversal_factors(num_layers):
-    '''average traversal_factors(int) -> arr
-    outputs the average traversal factor of every edge, for each layer'''
-    numerator, denominator = [0.0] * (num_layers - 1), [0.0] * (num_layers - 1)
-    queue = [(mdp.start, 0, -1)]
-    visited = set()
-    while len(queue) > 0:
-        current_state, current_depth, previous_state = queue.pop(0)
-        visited.add(current_state)
-
-        if current_state != 0:
-            numerator[current_depth - 1] += float(mdp.traversal_factors[previous_state, current_state])
-            denominator[current_depth - 1] += 1.0
-
-        if current_state >= mdp.traversal_factors.shape[0]: continue # one of the states added to preserve edge uniqueness; it has no neighbors ofc
-
-        neighbors_mask = np.sum(mdp.transition_function[current_state], axis=0) # axis is 0 not 1 cuz we have already selected out the first axis
-        for next_state in mdp.states:
-            if neighbors_mask[next_state] == 1:
-                queue.append((next_state, current_depth + 1, current_state))        
-
-    return np.array(numerator) / np.array(denominator)
-
 def main():
     # 3 independent variables - number of states, density, reward ratio
     global mdp, path_to_corrupt, corruption_algorithm
-    num_mdps_per_step = 50
-    num_layers = 4
-    mean_nodes_per_layer = 5
+    num_mdps_per_step = 200
+    mean_nodes_per_layer = 4
+    np.random.seed(1)
     num_steps = int(mean_nodes_per_layer / 2) + 1
-    data = np.zeros((num_steps, num_layers - 1))
+    data = np.zeros((num_steps, num_steps))
     x, y = [], []
     for density_step in range(num_steps):
         mean_degree = mean_nodes_per_layer - num_steps + density_step + 1
         print('Mean degree:', mean_degree)
         y.append(str(mean_degree)[:4])
-        numerator, denominator = [0] * (num_layers - 1), 0 # numerator is the percent of time in-between paths exist
-        for i in range(num_mdps_per_step):
-            print(i)
-            mdp.load_random_layered(num_layers, mean_nodes_per_layer, mean_degree, 1*p*delta, assure_unique_edges=False)
-            print(average_traversal_factors(num_layers))
-            print(mdp)
-            quit()
-            numerator += average_traversal_factors(num_layers)
-            denominator += 1
+        numerator, denominator = 0, 0
+        for depth_step in range(num_steps):
+            num_layers = 2 + depth_step # start at 2 layers
+            print('Number of layers:',num_layers)
+            if density_step == 0: x.append(num_layers)
+            for i in tqdm(range(num_mdps_per_step)):
+                mdp.load_random_layered(num_layers, mean_nodes_per_layer, mean_degree, 1*p*delta, assure_unique_edges=True)
+                corruption_algorithm = np.zeros((len(mdp.paths), len(mdp.states), len(mdp.states)))
+                alicia_heuristic()
+                numerator += float(path_to_corrupt.id) / len(mdp.paths)
+                denominator += 1
 
-        data[density_step] = numerator / denominator
+            data[density_step][depth_step] = float(numerator) / denominator
 
+    print('Finished computation.')
     sns.heatmap(data, annot=True)
     plt.xticks(range(len(x)), x)
     plt.yticks(range(len(y)), y)
-    plt.xlabel('Depth')
-    plt.ylabel('Mean edge degree')
+    plt.title('Rate of incidence of corruption being possible')
+    plt.xlabel('Number of layers')
+    plt.ylabel('Mean edge degree (density)')
     plt.show()
 
 if __name__ == '__main__':
