@@ -77,7 +77,7 @@ def algorithm2():
     Implements Algorithm 2'''
     global corruption_algorithm, path_to_corrupt, mdp
     P_p = mdp.P_star
-    test_corruption_algorithm = np.zeros((len(mdp.paths), mdp.transition_function.shape[0], len(mdp.states)))
+    test_corruption_algorithm = np.zeros((len(mdp.paths), len(mdp.states), len(mdp.states)))
     for P_i in mdp.paths: # don't iterate over best path
         if P_i.id == mdp.P_star.id: continue
 
@@ -209,7 +209,7 @@ def main():
     # 3 independent variables - number of states, density, reward ratio
     global mdp, path_to_corrupt, corruption_algorithm
     num_mdps_per_step = 200
-    mean_nodes_per_layer = 6
+    mean_nodes_per_layer = 4
     num_steps = int(mean_nodes_per_layer / 2) + 1
     data = np.zeros((num_steps, num_steps))
     x, y = [], []
@@ -225,12 +225,14 @@ def main():
             for i in tqdm(range(num_mdps_per_step)):
                 mdp.load_random_layered(num_layers, mean_nodes_per_layer, mean_degree, 1*p*delta, assure_unique_edges=True)
                 alicia_heuristic()
-                heuristic_result = path_to_corrupt.reward
+                observed_path_rewards = get_observed_path_rewards(corruption_algorithm)
+                heuristic_result = mdp.paths[np.argmax(observed_path_rewards)].reward
 
                 algorithm2()
-                alg2_result = path_to_corrupt.reward
+                observed_path_rewards = get_observed_path_rewards(corruption_algorithm)
+                alg2_result = mdp.paths[np.argmax(observed_path_rewards)].reward
 
-                numerator += heuristic_result / float(alg2_result)
+                numerator += heuristic_result - alg2_result
                 denominator += 1
 
             data[density_step][depth_step] = float(numerator) / denominator
@@ -239,7 +241,7 @@ def main():
     sns.heatmap(data, annot=True)
     plt.xticks(range(len(x)), x)
     plt.yticks(range(len(y)), y)
-    plt.title('Performance comparison ratio between Heuristic and Algorithm 2')
+    plt.title('Difference in reward of corrupted path between Heuristic and Algorithm 2')
     plt.xlabel('Number of layers')
     plt.ylabel('Mean edge degree (density)')
     plt.show()
