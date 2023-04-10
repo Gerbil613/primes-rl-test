@@ -57,9 +57,12 @@ def alicia_heuristic():
                 break
 
             for free_corruption_path in mdp.paths: # loop thru all paths to get free corruption to bring down interceding path
-                if np.sum(test_corruption_algorithm[free_corruption_path.id]) != 0: continue # already corrupted on this path, don't mess with it
                 for edge in free_corruption_path:
-                    if edge in interceding_path and edge not in P_p:
+                    if edge in P_p and edge not in interceding_path: # preference for corrupting up if possible
+                        test_corruption_algorithm[free_corruption_path.id] = np.zeros((len(mdp.states), len(mdp.states))) # override any downward corruption from before
+                        test_corruption_algorithm[free_corruption_path.id, edge] = delta
+
+                    elif edge in interceding_path and edge not in P_p and not np.sum(test_corruption_algorithm[free_corruption_path.id]) != 0: # if already corrupted on this path, don't mess with it
                         test_corruption_algorithm[free_corruption_path.id][edge[0]][edge[1]] = -delta
                         break
 
@@ -209,21 +212,23 @@ def main():
     # 3 independent variables - number of states, density, reward ratio
     global mdp, path_to_corrupt, corruption_algorithm
     num_mdps_per_step = 200
+    num_reward_steps = 6
     mean_nodes_per_layer = 4
     num_steps = int(mean_nodes_per_layer / 2) + 1
-    data = np.zeros((num_steps, num_steps))
+    data = np.zeros((num_steps, num_reward_steps))
+    num_layers = 3
     x, y = [], []
     for density_step in range(num_steps):
         mean_degree = mean_nodes_per_layer - num_steps + density_step + 1
         print('Mean degree:', mean_degree)
         y.append(str(mean_degree)[:4])
         numerator, denominator = 0, 0
-        for depth_step in range(num_steps):
-            num_layers = 2 + depth_step # start at 2 layers
-            print('Number of layers:',num_layers)
-            if density_step == 0: x.append(num_layers)
+        for reward_step in range(num_reward_steps):
+            reward_std = 10**(reward_step/float(num_reward_steps) - 1/2.0)
+            print('Reward deviation:',str(reward_std)[:5])
+            if density_step == 0: x.append(str(reward_std)[:5])
             for i in tqdm(range(num_mdps_per_step)):
-                mdp.load_random_layered(num_layers, mean_nodes_per_layer, mean_degree, 1*p*delta, assure_unique_edges=True)
+                mdp.load_random_layered(num_layers, mean_nodes_per_layer, mean_degree, reward_std*p*delta, assure_unique_edges=True)
                 alicia_heuristic()
                 observed_path_rewards = get_observed_path_rewards(corruption_algorithm)
                 heuristic_result = mdp.paths[np.argmax(observed_path_rewards)].reward
@@ -235,14 +240,14 @@ def main():
                 numerator += heuristic_result - alg2_result
                 denominator += 1
 
-            data[density_step][depth_step] = float(numerator) / denominator
+            data[density_step][reward_step] = float(numerator) / denominator
 
     print('Finished computation.')
     sns.heatmap(data, annot=True)
     plt.xticks(range(len(x)), x)
     plt.yticks(range(len(y)), y)
     plt.title('Difference in reward of corrupted path between Heuristic and Algorithm 2')
-    plt.xlabel('Number of layers')
+    plt.xlabel('Reward deviation')
     plt.ylabel('Mean edge degree (density)')
     plt.show()
 
