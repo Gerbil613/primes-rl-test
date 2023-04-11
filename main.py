@@ -57,12 +57,24 @@ def alicia_heuristic():
                 break
 
             for free_corruption_path in mdp.paths: # loop thru all paths to get free corruption to bring down interceding path
+                if free_corruption_path.id == P_p.id or free_corruption_path.id == interceding_path.id: continue
+                # what follows is quick modification that causes the heuristic to favor corrupting up P_p before bringing down interceding paths
+                opt = -1
+                opt_edge = -1
                 for edge in free_corruption_path:
-                    if edge in P_p and edge not in interceding_path: # preference for corrupting up if possible
-                        test_corruption_algorithm[free_corruption_path.id] = np.zeros((len(mdp.states), len(mdp.states))) # override any downward corruption from before
-                        test_corruption_algorithm[free_corruption_path.id, edge] = delta
+                    if edge in P_p and edge not in interceding_path:
+                        if mdp.traversal_factors[edge] < opt or opt == -1:
+                            opt = mdp.traversal_factors[edge]
+                            opt_edge = deepcopy(edge)
 
-                    elif edge in interceding_path and edge not in P_p and not np.sum(test_corruption_algorithm[free_corruption_path.id]) != 0: # if already corrupted on this path, don't mess with it
+                if opt_edge != -1:
+                    test_corruption_algorithm[free_corruption_path.id] = np.zeros((len(mdp.states)))
+                    test_corruption_algorithm[free_corruption_path.id, opt_edge] = delta
+                    continue # move on to next free corruption path, don't do what's below
+
+                for edge in free_corruption_path:
+                    # only checking if edge is in interceding path since this code only executes if no edges in free_corruption_path are in P_p and not in interceding_path
+                    if edge in interceding_path and edge not in P_p and not np.sum(test_corruption_algorithm[free_corruption_path.id]) != 0: # if already corrupted on this path, don't mess with it
                         test_corruption_algorithm[free_corruption_path.id][edge[0]][edge[1]] = -delta
                         break
 
@@ -236,7 +248,7 @@ def main():
                 algorithm2()
                 observed_path_rewards = get_observed_path_rewards(corruption_algorithm)
                 alg2_result = mdp.paths[np.argmax(observed_path_rewards)].reward
-
+                
                 numerator += heuristic_result - alg2_result
                 denominator += 1
 
@@ -247,7 +259,7 @@ def main():
     plt.xticks(range(len(x)), x)
     plt.yticks(range(len(y)), y)
     plt.title('Difference in reward of corrupted path between Heuristic and Algorithm 2')
-    plt.xlabel('Reward deviation')
+    plt.xlabel('Reward deviation (coefficient to pdelta)')
     plt.ylabel('Mean edge degree (density)')
     plt.show()
 
