@@ -39,8 +39,8 @@ def get_observed_path_rewards(test_corruption_algorithm):
 
     return observed_rewards
 
-def alicia_heuristic():
-    '''alicia_heuristic() -> None
+def anti_intercede():
+    '''anti_intercede() -> None
     implements alicia's heuristic version of algorithm 2 to deal with in-between paths'''
     global corruption_algorithm, path_to_corrupt, mdp
     corruption_algorithm = np.zeros((len(mdp.paths), len(mdp.states), len(mdp.states)))
@@ -86,8 +86,8 @@ def alicia_heuristic():
             path_to_corrupt = deepcopy(P_p)
             corruption_algorithm = deepcopy(test_corruption_algorithm)
 
-def algorithm2():
-    '''algorithm2() -> None
+def intercede_blind():
+    '''intercede_blind() -> None
     computes path in MDP that is best for adversary to corrupt and sets global variables
     Implements Algorithm 2'''
     global corruption_algorithm, path_to_corrupt, mdp
@@ -107,7 +107,7 @@ def algorithm2():
 def test_path(test_path_to_corrupt):
     '''test_path(path) -> array, float
     determines which edge to corrupt for each path in the dynamic adversarial algorithm, in order to switch inputted path
-    helper function for algorithm2'''
+    helper function for intercede_blind'''
     test_corruption_algorithm = np.zeros((len(mdp.paths), int(mdp.transition_function.shape[0]), len(mdp.states))) # specify path and edge
     budget = 0
     for path in mdp.paths:
@@ -241,15 +241,15 @@ def main():
             if density_step == 0: x.append(str(reward_std)[:5])
             for i in tqdm(range(num_mdps_per_step)):
                 mdp.load_random_layered(num_layers, mean_nodes_per_layer, mean_degree, reward_std*p*delta, assure_unique_edges=True)
-                alicia_heuristic()
+                anti_intercede()
                 observed_path_rewards = get_observed_path_rewards(corruption_algorithm)
-                heuristic_result = mdp.paths[np.argmax(observed_path_rewards)].reward
+                anti_intercede_result = mdp.paths[np.argmax(observed_path_rewards)].reward
 
-                algorithm2()
+                intercede_blind()
                 observed_path_rewards = get_observed_path_rewards(corruption_algorithm)
-                alg2_result = mdp.paths[np.argmax(observed_path_rewards)].reward
+                intercede_blind_result = mdp.paths[np.argmax(observed_path_rewards)].reward
                 
-                numerator += heuristic_result - alg2_result
+                numerator += anti_intercede_result - intercede_blind_result
                 denominator += 1
 
             data[density_step][reward_step] = float(numerator) / denominator
