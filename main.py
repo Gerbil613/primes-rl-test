@@ -49,7 +49,7 @@ def anti_intercede():
         test_corruption_algorithm = np.zeros((len(mdp.paths), len(mdp.states), len(mdp.states)))
         unique_edge = mdp.unique_edges[P_p.id]
         test_corruption_algorithm[P_p.id][unique_edge[0]][unique_edge[1]] = delta
-        for interceding_path_index in range(len(mdp.paths) - 1, P_p.id, -1): # loop thru best to worst paths, trying to bring down each as conservatively as possible
+        for interceding_path_index in range(1, P_p.id): # loop thru best to worst paths, trying to bring down each as conservatively as possible
             interceding_path = mdp.paths[interceding_path_index]
 
             observed_path_rewards = get_observed_path_rewards(test_corruption_algorithm)
