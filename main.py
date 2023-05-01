@@ -10,6 +10,7 @@ from tqdm import tqdm
 mdp = MDP()
 path_to_corrupt = None
 corruption_algorithm = None
+num_interfering_paths = 0
 
 estimations = None
 
@@ -42,19 +43,20 @@ def get_observed_path_rewards(test_corruption_algorithm):
 def anti_intercede():
     '''anti_intercede() -> None
     implements alicia's heuristic version of algorithm 2 to deal with in-between paths'''
-    global corruption_algorithm, path_to_corrupt, mdp
+    global corruption_algorithm, path_to_corrupt, mdp, num_interfering_paths
+
+    intercede_blind() # first we have to run alg 2 to determine if there actually are any interfering paths
+    if num_interfering_paths == 0: return
+
+    # otherwise, there are interfering paths
     corruption_algorithm = np.zeros((len(mdp.paths), len(mdp.states), len(mdp.states)))
     path_to_corrupt = mdp.P_star
     for P_p in mdp.paths: # P_p is tested for corruption
         test_corruption_algorithm = np.zeros((len(mdp.paths), len(mdp.states), len(mdp.states)))
         unique_edge = mdp.unique_edges[P_p.id]
         test_corruption_algorithm[P_p.id][unique_edge[0]][unique_edge[1]] = delta
-        for interceding_path_index in range(1, P_p.id): # loop thru best to worst paths, trying to bring down each as conservatively as possible
+        for interceding_path_index in range(P_p.id): # loop thru best to worst paths, trying to bring down each as conservatively as possible
             interceding_path = mdp.paths[interceding_path_index]
-
-            observed_path_rewards = get_observed_path_rewards(test_corruption_algorithm)
-            if observed_path_rewards[interceding_path.id] < observed_path_rewards[P_p.id]:
-                break
 
             for free_corruption_path in mdp.paths: # loop thru all paths to get free corruption to bring down interceding path
                 if free_corruption_path.id == P_p.id or free_corruption_path.id == interceding_path.id: continue
@@ -68,13 +70,13 @@ def anti_intercede():
                             opt_edge = deepcopy(edge)
 
                 if opt_edge != -1:
-                    test_corruption_algorithm[free_corruption_path.id] = np.zeros((len(mdp.states)))
-                    test_corruption_algorithm[free_corruption_path.id, opt_edge] = delta
+                    test_corruption_algorithm[free_corruption_path.id] = np.zeros((len(mdp.states), len(mdp.states)))
+                    test_corruption_algorithm[free_corruption_path.id, opt_edge[0], opt_edge[1]] = delta
                     continue # move on to next free corruption path, don't do what's below
 
                 for edge in free_corruption_path:
                     # only checking if edge is in interceding path since this code only executes if no edges in free_corruption_path are in P_p and not in interceding_path
-                    if edge in interceding_path and edge not in P_p and not np.sum(test_corruption_algorithm[free_corruption_path.id]) != 0: # if already corrupted on this path, don't mess with it
+                    if edge in interceding_path and edge not in P_p and np.sum(test_corruption_algorithm[free_corruption_path.id]) == 0: # if already corrupted on this path, don't mess with it
                         test_corruption_algorithm[free_corruption_path.id][edge[0]][edge[1]] = -delta
                         break
 
@@ -90,38 +92,30 @@ def intercede_blind():
     '''intercede_blind() -> None
     computes path in MDP that is best for adversary to corrupt and sets global variables
     Implements Algorithm 2'''
-    global corruption_algorithm, path_to_corrupt, mdp
+    global corruption_algorithm, path_to_corrupt, mdp, num_interfering_paths
     P_p = mdp.P_star
-    test_corruption_algorithm = np.zeros((len(mdp.paths), len(mdp.states), len(mdp.states)))
     for P_i in mdp.paths: # don't iterate over best path
         if P_i.id == mdp.P_star.id: continue
+        test_corruption_algorithm = np.zeros((len(mdp.paths), int(mdp.transition_function.shape[0]), len(mdp.states))) # specify path and edge
+        budget = 0
+        for path in mdp.paths:
+            opt = -1
+            opt_edge = -1
+            for edge in path:
+                if (edge in P_i) != (edge in mdp.P_star) and (opt == -1 or mdp.traversal_factors[edge[0]][edge[1]] < opt):
+                    opt = mdp.traversal_factors[edge[0]][edge[1]]
+                    opt_edge = edge
 
-        result, budget = test_path(P_i)
+            budget += 1.0 / opt if opt != -1 else 0
+            if opt_edge != -1: test_corruption_algorithm[path.id][opt_edge[0]][opt_edge[1]] = delta if opt_edge in P_i else -delta
+    
         if P_i.reward < P_p.reward and mdp.P_star.reward - budget*p*delta < P_i.reward:
-            test_corruption_algorithm = result
+            corruption_algorithm = test_corruption_algorithm
             P_p = P_i
 
-    corruption_algorithm = deepcopy(test_corruption_algorithm)
     path_to_corrupt = deepcopy(P_p)
-
-def test_path(test_path_to_corrupt):
-    '''test_path(path) -> array, float
-    determines which edge to corrupt for each path in the dynamic adversarial algorithm, in order to switch inputted path
-    helper function for intercede_blind'''
-    test_corruption_algorithm = np.zeros((len(mdp.paths), int(mdp.transition_function.shape[0]), len(mdp.states))) # specify path and edge
-    budget = 0
-    for path in mdp.paths:
-        opt = -1
-        opt_edge = -1
-        for edge in path:
-            if (edge in test_path_to_corrupt) != (edge in mdp.P_star) and (opt == -1 or mdp.traversal_factors[edge[0]][edge[1]] < opt):
-                opt = mdp.traversal_factors[edge[0]][edge[1]]
-                opt_edge = edge
-
-        budget += 1.0 / opt if opt != -1 else 0
-        if opt_edge != -1: test_corruption_algorithm[path.id][opt_edge[0]][opt_edge[1]] = delta if opt_edge in test_path_to_corrupt else -delta
-    
-    return test_corruption_algorithm, budget
+    observed_path_rewards = get_observed_path_rewards(corruption_algorithm)
+    num_interfering_paths = path_to_corrupt.id - np.argmax(observed_path_rewards)
 
 def learn(epsilon, num_warm_episodes=50, attack=0, verbose=1, lw=5, num_epochs=1000, num_greedy_episodes=200, objective_evaluation=True):
     '''learn(float, bool) -> None
@@ -222,45 +216,50 @@ def best_path(epsilon, estimations):
 
 def main():
     # 3 independent variables - number of states, density, reward ratio
-    global mdp, path_to_corrupt, corruption_algorithm
+    global mdp, path_to_corrupt, corruption_algorithm, num_interfering_paths
     num_mdps_per_step = 200
-    num_reward_steps = 6
+    num_reward_steps = 5
     mean_nodes_per_layer = 4
     num_steps = int(mean_nodes_per_layer / 2) + 1
-    data = np.zeros((num_steps, num_reward_steps))
     num_layers = 3
-    x, y = [], []
+    data_sum = np.zeros((100)) # index value is number of in-between paths
+    data_count = np.zeros((100))
     for density_step in range(num_steps):
         mean_degree = mean_nodes_per_layer - num_steps + density_step + 1
         print('Mean degree:', mean_degree)
-        y.append(str(mean_degree)[:4])
-        numerator, denominator = 0, 0
+        #y.append(str(mean_degree)[:4])
         for reward_step in range(num_reward_steps):
-            reward_std = 10**(reward_step/float(num_reward_steps) - 1/2.0)
+            reward_std = 10**(2*reward_step/float(num_reward_steps-1) - 1)
             print('Reward deviation:',str(reward_std)[:5])
-            if density_step == 0: x.append(str(reward_std)[:5])
+            #if density_step == 0: x.append(str(reward_std)[:5])
             for i in tqdm(range(num_mdps_per_step)):
                 mdp.load_random_layered(num_layers, mean_nodes_per_layer, mean_degree, reward_std*p*delta, assure_unique_edges=True)
                 anti_intercede()
                 observed_path_rewards = get_observed_path_rewards(corruption_algorithm)
-                anti_intercede_result = mdp.paths[np.argmax(observed_path_rewards)].reward
+                anti_intercede_result = deepcopy(mdp.paths[np.argmax(observed_path_rewards)])
+                assert not np.any(np.greater(np.abs(np.sum(corruption_algorithm, axis=(1,2))), delta))
 
                 intercede_blind()
                 observed_path_rewards = get_observed_path_rewards(corruption_algorithm)
-                intercede_blind_result = mdp.paths[np.argmax(observed_path_rewards)].reward
-                
-                numerator += anti_intercede_result - intercede_blind_result
-                denominator += 1
+                intercede_blind_result = deepcopy(mdp.paths[np.argmax(observed_path_rewards)])
 
-            data[density_step][reward_step] = float(numerator) / denominator
+                performance_difference = anti_intercede_result.reward - intercede_blind_result.reward
+                data_sum[num_interfering_paths] += performance_difference
+                data_count[num_interfering_paths] += 1.0
 
     print('Finished computation.')
-    sns.heatmap(data, annot=True)
+    '''sns.heatmap(data, annot=True)
     plt.xticks(range(len(x)), x)
-    plt.yticks(range(len(y)), y)
-    plt.title('Difference in reward of corrupted path between Heuristic and Algorithm 2')
-    plt.xlabel('Reward deviation (coefficient to pdelta)')
-    plt.ylabel('Mean edge degree (density)')
+    plt.yticks(range(len(y)), y)'''
+    data_sum = data_sum[:16]
+    data_count = data_count[:16]
+    plt.scatter(np.array(range(16)), np.array(data_sum / data_count))
+    for point in range(16):
+        plt.annotate(data_count[point], (range(16)[point], np.array(data_sum / data_count)[point]))
+
+    plt.title('Difference in Adversary Performance vs. Number of Interfering Paths')
+    plt.xlabel('Number of Interfering Paths')
+    plt.ylabel('Difference in Performance between Heuristic and Interference-Blind Algorithm')
     plt.show()
 
 if __name__ == '__main__':
