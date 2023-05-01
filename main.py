@@ -96,7 +96,7 @@ def intercede_blind():
     P_p = mdp.P_star
     for P_i in mdp.paths: # don't iterate over best path
         if P_i.id == mdp.P_star.id: continue
-        test_corruption_algorithm = np.zeros((len(mdp.paths), int(mdp.transition_function.shape[0]), len(mdp.states))) # specify path and edge
+        test_corruption_algorithm = np.zeros((len(mdp.paths), int(mdp.states), len(mdp.states))) # specify path and edge
         budget = 0
         for path in mdp.paths:
             opt = -1
@@ -110,7 +110,7 @@ def intercede_blind():
             if opt_edge != -1: test_corruption_algorithm[path.id][opt_edge[0]][opt_edge[1]] = delta if opt_edge in P_i else -delta
     
         if P_i.reward < P_p.reward and mdp.P_star.reward - budget*p*delta < P_i.reward:
-            corruption_algorithm = test_corruption_algorithm
+            corruption_algorithm = deepcopy(test_corruption_algorithm)
             P_p = P_i
 
     path_to_corrupt = deepcopy(P_p)
