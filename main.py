@@ -36,8 +36,8 @@ def get_observed_path_rewards(test_corruption_algorithm):
     for i in range(len(mdp.paths)):
         path = mdp.paths[i]
         for edge in path:
-            observed_rewards[i] += mdp.rewards[edge[0], edge[1]] + p * np.average(test_corruption_algorithm[:, edge[0], edge[1]])
-
+            observed_rewards[i] += mdp.rewards[edge[0], edge[1]] + p * np.sum(test_corruption_algorithm[:, edge[0], edge[1]]) / float(mdp.path_counts[edge[0], edge[1]])
+        
     return observed_rewards
 
 def anti_intercede():
@@ -65,8 +65,8 @@ def anti_intercede():
                 opt_edge = -1
                 for edge in free_corruption_path:
                     if edge in P_p and edge not in interceding_path:
-                        if mdp.traversal_factors[edge] < opt or opt == -1:
-                            opt = mdp.traversal_factors[edge]
+                        if mdp.path_counts[edge] < opt or opt == -1:
+                            opt = mdp.path_counts[edge]
                             opt_edge = deepcopy(edge)
 
                 if opt_edge != -1:
@@ -93,29 +93,35 @@ def intercede_blind():
     computes path in MDP that is best for adversary to corrupt and sets global variables
     Implements Algorithm 2'''
     global corruption_algorithm, path_to_corrupt, mdp, num_interfering_paths
-    P_p = mdp.P_star
+    path_to_corrupt = mdp.P_star
+    corruption_algorithm = np.zeros((len(mdp.paths), len(mdp.states), len(mdp.states)))
+    num_interfering_paths = 0
     for P_i in mdp.paths: # don't iterate over best path
         if P_i.id == mdp.P_star.id: continue
         test_corruption_algorithm = np.zeros((len(mdp.paths), len(mdp.states), len(mdp.states))) # specify path and edge
         budget = 0
-        for path in mdp.paths:
-            opt = -1
+        for path in mdp.paths: # free corruption path
+            opt = 0
             opt_edge = -1
             for edge in path:
-                if (edge in P_i) != (edge in mdp.P_star) and (opt == -1 or mdp.traversal_factors[edge[0]][edge[1]] < opt):
-                    opt = mdp.traversal_factors[edge[0]][edge[1]]
+                if (edge in P_i) != (edge in mdp.P_star) and 1.0 / mdp.path_counts[edge[0]][edge[1]] > opt:
+                    opt = float(p*delta) / mdp.path_counts[edge[0]][edge[1]]
                     opt_edge = edge
 
-            budget += 1.0 / opt if opt != -1 else 0
+            budget += opt
             if opt_edge != -1: test_corruption_algorithm[path.id][opt_edge[0]][opt_edge[1]] = delta if opt_edge in P_i else -delta
-    
-        if P_i.reward < P_p.reward and mdp.P_star.reward - budget*p*delta < P_i.reward:
-            corruption_algorithm = deepcopy(test_corruption_algorithm)
-            P_p = P_i
 
-    path_to_corrupt = deepcopy(P_p)
+        if P_i.reward < path_to_corrupt.reward and mdp.P_star.reward - budget < P_i.reward:
+            corruption_algorithm = deepcopy(test_corruption_algorithm)
+            path_to_corrupt = deepcopy(P_i)
+    
     observed_path_rewards = get_observed_path_rewards(corruption_algorithm)
-    num_interfering_paths = path_to_corrupt.id - np.argmax(observed_path_rewards)
+    if path_to_corrupt.id <= 1: num_interfering_paths = 0
+    else:
+        observed_path_rewards = get_observed_path_rewards(corruption_algorithm)
+        for i in range(len(observed_path_rewards)):
+            if observed_path_rewards[i] > observed_path_rewards[path_to_corrupt.id] and i != path_to_corrupt.id:
+                num_interfering_paths += 1
 
 def learn(epsilon, num_warm_episodes=50, attack=0, verbose=1, lw=5, num_epochs=1000, num_greedy_episodes=200, objective_evaluation=True):
     '''learn(float, bool) -> None
@@ -217,49 +223,59 @@ def best_path(epsilon, estimations):
 def main():
     # 3 independent variables - number of states, density, reward ratio
     global mdp, path_to_corrupt, corruption_algorithm, num_interfering_paths
-    num_mdps_per_step = 200
+    num_mdps_per_step = 1000
     num_reward_steps = 5
     mean_nodes_per_layer = 4
     num_steps = int(mean_nodes_per_layer / 2) + 1
     num_layers = 3
-    data_sum = np.zeros((100)) # index value is number of in-between paths
-    data_count = np.zeros((100))
+    data_sum1 = [0] # index value is number of in-between paths
+    data_count1 = [0]
+    data_sum2 = [0]
+    data_count2 = [0]
+    x, y = np.zeros((num_reward_steps)), np.zeros((num_steps))
+    #data = np.zeros((num_steps, num_reward_steps))
     for density_step in range(num_steps):
         mean_degree = mean_nodes_per_layer - num_steps + density_step + 1
+        y[density_step] = mean_degree
         print('Mean degree:', mean_degree)
-        #y.append(str(mean_degree)[:4])
         for reward_step in range(num_reward_steps):
             reward_std = 10**(2*reward_step/float(num_reward_steps-1) - 1)
+            x[reward_step] = round(reward_std, 4)
             print('Reward deviation:',str(reward_std)[:5])
-            #if density_step == 0: x.append(str(reward_std)[:5])
+            numerator = 0
             for i in tqdm(range(num_mdps_per_step)):
+                num_interfering_paths = None
                 mdp.load_random_layered(num_layers, mean_nodes_per_layer, mean_degree, reward_std*p*delta, assure_unique_edges=True)
-                anti_intercede()
-                observed_path_rewards = get_observed_path_rewards(corruption_algorithm)
-                anti_intercede_result = deepcopy(mdp.paths[np.argmax(observed_path_rewards)])
-                assert not np.any(np.greater(np.abs(np.sum(corruption_algorithm, axis=(1,2))), delta))
-
                 intercede_blind()
-                observed_path_rewards = get_observed_path_rewards(corruption_algorithm)
-                intercede_blind_result = deepcopy(mdp.paths[np.argmax(observed_path_rewards)])
 
-                performance_difference = anti_intercede_result.reward - intercede_blind_result.reward
-                data_sum[num_interfering_paths] += performance_difference
-                data_count[num_interfering_paths] += 1.0
+                if num_interfering_paths > 9: continue
+                intercede_blind_result = mdp.paths[np.argmax(get_observed_path_rewards(corruption_algorithm))]
+
+                anti_intercede()
+                anti_intercede_result = mdp.paths[np.argmax(get_observed_path_rewards(corruption_algorithm))]
+                
+                if len(data_count1) <= num_interfering_paths:
+                    data_count1.extend([0] * (num_interfering_paths - len(data_count1) + 1))
+                    data_sum1.extend([0] * (num_interfering_paths - len(data_sum1) + 1))
+                    data_count2.extend([0] * (num_interfering_paths - len(data_count2) + 1))
+                    data_sum2.extend([0] * (num_interfering_paths - len(data_sum2) + 1))
+
+                data_count1[num_interfering_paths] += 1
+                data_sum1[num_interfering_paths] += anti_intercede_result.id
+                data_count2[num_interfering_paths] += 1
+                data_sum2[num_interfering_paths] += intercede_blind_result.id
 
     print('Finished computation.')
     '''sns.heatmap(data, annot=True)
     plt.xticks(range(len(x)), x)
     plt.yticks(range(len(y)), y)'''
-    data_sum = data_sum[:16]
-    data_count = data_count[:16]
-    plt.scatter(np.array(range(16)), np.array(data_sum / data_count))
-    for point in range(16):
-        plt.annotate(data_count[point], (range(16)[point], np.array(data_sum / data_count)[point]))
 
-    plt.title('Difference in Adversary Performance vs. Number of Interfering Paths')
-    plt.xlabel('Number of Interfering Paths')
-    plt.ylabel('Difference in Performance between Heuristic and Interference-Blind Algorithm')
+    plt.plot(range(len(data_count1)), np.array(data_sum1) / np.array(data_count1), label='Heuristic')
+    plt.plot(range(len(data_count2)), np.array(data_sum2) / np.array(data_count2), label='Interference-blind')
+    plt.title('Adversarial performance vs. number of interfering paths')
+    plt.xlabel('Number of interfering paths')
+    plt.ylabel('Average Rank of Path Observed To Be Optimal After Application of Interference-Blind Attack')
+    plt.legend()
     plt.show()
 
 if __name__ == '__main__':

@@ -10,7 +10,8 @@ class MDP:
     states and actions are just indices, whereas state_space and action_space are the actual states and actions'''
     start = None
     rewards = []
-    traversal_factors = None
+    path_counts = None
+    traversal_probabilities = None
     paths = []
     P_star = None
     transition_function = None
@@ -61,7 +62,7 @@ class MDP:
 
         def load_maze_tf(self, state, visited, width, height):
             '''load_maze_tf(state, set, int) -> None
-            sets up transition funciton and loads paths and traversal factors'''
+            sets up transition funciton and loads paths and path counts'''
             visited.add(state)
 
             for action in self.action_space: # try each action and see which next states we can go to according to TF
@@ -79,7 +80,8 @@ class MDP:
         self.paths.sort(reverse=True) # best is first
         for id in range(len(self.paths)): self.paths[id].id = id
         self.P_star = self.paths[0]
-        self.load_traversal_factors()
+        self.load_path_counts()
+        self.load_traversal_probabilities()
 
     def load_random_dag(self, num_states, p_edge=.55, reward_std=1, assure_unique_edges=True):
         '''MDP.load_random_dag(int) -> None
@@ -111,7 +113,8 @@ class MDP:
         self.paths.sort(reverse=True) # best is first
         self.P_star = self.paths[0]
         for id in range(len(self.paths)): self.paths[id].id = id
-        self.load_traversal_factors()
+        self.load_path_counts()
+        self.load_traversal_probabilities()
         if assure_unique_edges: self.assure_unique_edges(reward_std)
 
     def load_random_layered(self, num_layers, mean_nodes_per_layer, mean_degree, reward_std, assure_unique_edges=True):
@@ -177,7 +180,8 @@ class MDP:
         self.paths.sort(reverse=True) # best is first
         self.P_star = self.paths[0]
         for id in range(len(self.paths)): self.paths[id].id = id
-        self.load_traversal_factors()
+        self.load_path_counts()
+        self.load_traversal_probabilities()
         if assure_unique_edges: self.assure_unique_edges(reward_std)
 
     def load_paths(self, state, current_path, prev_state=-1):
@@ -196,10 +200,11 @@ class MDP:
                 if self.transition_function[state][action][new_state] == 1: # we can get to new state
                     self.load_paths(new_state, deepcopy(current_path), prev_state=state)
 
-    def load_traversal_factors(self):
-        '''MDP.load_traversal_factors() -> None
-        once MDP is set up, calculates and stores traversal factors'''
-        self.traversal_factors = np.zeros((len(self.states), len(self.states)))
+    def load_path_counts(self):
+        '''MDP.load_path_counts() -> None
+        once MDP is set up, calculates and stores path counts
+        this counts the number of paths that contain a given edge'''
+        self.path_counts = np.zeros((len(self.states), len(self.states)))
         for state1 in self.states:
             for state2 in self.states:
                 if not self.transition_function[state1, :, state2].any(): continue
@@ -207,7 +212,21 @@ class MDP:
                 edge = (state1, state2)
                 for path in self.paths:
                     if edge in path:
-                        self.traversal_factors[state1, state2] += 1
+                        self.path_counts[state1, state2] += 1
+
+    def load_traversal_probabilities(self):
+        '''MDP.load_traversal_probabilities() -> None
+        determines probability of each edge being traversed'''
+        queue = [(self.start, 1)]
+        self.traversal_probabilities = np.zeros((len(self.states), len(self.states)))
+        while len(queue) > 0:
+            state, prev_traversal_probability = queue.pop(0)
+            for new_state in self.states:
+                if np.count_nonzero(self.transition_function[state, :, new_state]) > 0:
+                    # use plus-equals since paths can rejoin
+                    new_traversal_probability = prev_traversal_probability / float(np.count_nonzero(self.transition_function[state]))
+                    self.traversal_probabilities[state, new_state] += new_traversal_probability
+                    queue.append((new_state, new_traversal_probability))
 
     def assure_unique_edges(self, reward_std):
         '''MDP.assure_unique_edges(float) -> None
@@ -216,9 +235,10 @@ class MDP:
         for path in self.paths:
             has_unique_edge = False
             for edge in path:
-                if self.traversal_factors[edge] == 1:
+                if self.path_counts[edge] == 1:
                     self.unique_edges[path.id] = edge
                     has_unique_edge = True
+                    break
             
             if not has_unique_edge:
                 tip_state = len(self.states)
@@ -229,12 +249,15 @@ class MDP:
                 self.rewards[path.states[-2], tip_state] = reward # -2 because -1 is the tip_state itself, since we added it already
 
                 self.transition_function = np.append(self.transition_function, np.zeros((len(self.transition_function), len(self.transition_function[0]), 1)), axis=2)
-                self.transition_function[path.states[-2], 0, tip_state] = 1
+                self.transition_function[path.states[-1], 0, tip_state] = 1
                 path.add(tip_state, reward)
 
-                self.traversal_factors = np.append(self.traversal_factors, np.zeros((len(self.traversal_factors), 1)), axis=1)
-                self.traversal_factors[path.states[-2], tip_state] = 1 # unique
-
+                self.path_counts = np.append(self.path_counts, np.zeros((len(self.path_counts), 1)), axis=1)
+                self.path_counts[path.states[-2], tip_state] = 1 # unique
+                self.traversal_probabilities = np.append(self.traversal_probabilities, np.zeros((len(self.traversal_probabilities), 1)), axis=1)
+                self.traversal_probabilities[path.states[-2], tip_state] = \
+                    self.traversal_probabilities[path.states[-3], path.states[-2]] / float(np.count_nonzero(self.transition_function[path.states[-2]]))
+                
                 self.unique_edges[path.id] = [path.states[-2], tip_state]
 
     def take_action(self, state, action):
