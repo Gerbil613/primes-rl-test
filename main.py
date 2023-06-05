@@ -87,7 +87,6 @@ def anti_intercede():
         if np.argmax(get_observed_path_rewards(test_corruption_algorithm)) == P_p.id and path_to_corrupt.reward > P_p.reward:
             path_to_corrupt = deepcopy(P_p)
             corruption_algorithm = deepcopy(test_corruption_algorithm)
-
 def intercede_blind():
     '''intercede_blind() -> None
     computes path in MDP that is best for adversary to corrupt and sets global variables
@@ -223,11 +222,12 @@ def best_path(epsilon, estimations):
 def main():
     # 3 independent variables - number of states, density, reward ratio
     global mdp, path_to_corrupt, corruption_algorithm, num_interfering_paths
-    num_mdps_per_step = 1000
+    num_mdps_per_step = 2000
     num_reward_steps = 5
     mean_nodes_per_layer = 4
     num_steps = int(mean_nodes_per_layer / 2) + 1
     num_layers = 3
+    data = np.zeros((num_steps, num_reward_steps))
     data_sum1 = [0] # index value is number of in-between paths
     data_count1 = [0]
     data_sum2 = [0]
@@ -247,11 +247,14 @@ def main():
                 num_interfering_paths = None
                 mdp.load_random_layered(num_layers, mean_nodes_per_layer, mean_degree, reward_std*p*delta, assure_unique_edges=True)
                 intercede_blind()
-
                 if num_interfering_paths > 9: continue
+                #assert np.count_nonzero(np.greater(np.sum(np.abs(corruption_algorithm), axis=(1,2)), delta)) == 0
+
                 intercede_blind_result = mdp.paths[np.argmax(get_observed_path_rewards(corruption_algorithm))]
+                numerator += num_interfering_paths > 0
 
                 anti_intercede()
+                #assert np.count_nonzero(np.greater(np.sum(np.abs(corruption_algorithm), axis=(1,2)), delta)) == 0
                 anti_intercede_result = mdp.paths[np.argmax(get_observed_path_rewards(corruption_algorithm))]
                 
                 if len(data_count1) <= num_interfering_paths:
@@ -261,20 +264,26 @@ def main():
                     data_sum2.extend([0] * (num_interfering_paths - len(data_sum2) + 1))
 
                 data_count1[num_interfering_paths] += 1
-                data_sum1[num_interfering_paths] += anti_intercede_result.id
+                data_sum1[num_interfering_paths] += anti_intercede_result.id / len(mdp.paths)
                 data_count2[num_interfering_paths] += 1
-                data_sum2[num_interfering_paths] += intercede_blind_result.id
+                data_sum2[num_interfering_paths] += intercede_blind_result.id / len(mdp.paths)
+
+            #data[density_step, reward_step] = numerator / float(num_mdps_per_step)
 
     print('Finished computation.')
-    '''sns.heatmap(data, annot=True)
+
+    '''sns.heatmap(data, annot=True, cmap='Greens')
     plt.xticks(range(len(x)), x)
-    plt.yticks(range(len(y)), y)'''
+    plt.yticks(range(len(y)), y)
+    plt.title('Rates of Incidence of Interfering Paths')
+    plt.xlabel('Standard deviation of reward')
+    plt.ylabel('Mean outgoing degree of node')'''
 
     plt.plot(range(len(data_count1)), np.array(data_sum1) / np.array(data_count1), label='Heuristic')
     plt.plot(range(len(data_count2)), np.array(data_sum2) / np.array(data_count2), label='Interference-blind')
     plt.title('Adversarial performance vs. number of interfering paths')
     plt.xlabel('Number of interfering paths')
-    plt.ylabel('Average Rank of Path Observed To Be Optimal After Application of Interference-Blind Attack')
+    plt.ylabel('Ratio of Rank to Number of Paths')
     plt.legend()
     plt.show()
 
